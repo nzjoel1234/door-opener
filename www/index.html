@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Example</title>
+        <script>
+            const d = document;
+
+            function sendRequest(method, url, onFailure, onSuccess) {
+                const request = new XMLHttpRequest();
+                request.onreadystatechange = () => {
+                    if (request.readyState != 4) {
+                        return;
+                    }
+                    if (request.status !== 200) {
+                        onFailure(request);
+                        return;
+                    }
+                    onSuccess(request);
+                }
+                request.open(method, url);
+                request.send();
+                return request;
+            }
+
+            function setNetworkCofig() {
+                console.log('setting');
+            }
+
+            function onNetworkSelectionChanged() {
+                const name = d.getElementById('network-selecter').value;
+                d.getElementById('network-name-input').value = name;
+            }
+
+            function updateStatus(status)
+            {
+                d.getElementById('status-active').innerHTML = status ? (status.active ? 'Yes' : 'No') : 'Loading...';
+                d.getElementById('status-name').innerHTML = status ? (status.active ? status.name : '') : 'Loading...';
+                d.getElementById('status-ip').innerHTML = status ? (status.active ? status.ip : '') : 'Loading...';
+            }
+
+            function getStatus() {
+                updateStatus();
+                sendRequest('GET', '/status',
+                  () => alert('Failed to get status'),
+                  r => updateStatus(JSON.parse(r.responseText)));
+            }
+
+            function addSelectOption(selectElement, label, value)
+            {
+                var optionEl = d.createElement('option');
+                optionEl.setAttribute('value', value || '');
+                optionEl.innerHTML = label;
+                selectElement.appendChild(optionEl);
+            }
+
+            function getNetworks() {
+                const selectEl = d.getElementById('network-selecter');
+                selectEl.innerHTML = '';
+                addSelectOption(selectEl, 'Loading...');
+                sendRequest('GET', '/networks',
+                    () => alert('Failed to get network list'),
+                    r => {
+                        const result = JSON.parse(r.responseText);
+                        selectEl.innerHTML = '';
+                        addSelectOption(selectEl, 'Select a network');
+                        result.forEach(network => {
+                            addSelectOption(selectEl, network.name + ' (' + network.rssi + ')', network.name);
+                        });
+                  });
+            }
+
+            window.onload = () => {
+                getStatus();
+                getNetworks();
+            }
+        </script>
+    </head>
+    <body>
+        <h1>E-SPrinkler Network Configuration</h1>
+        <h2>Current Status <button onclick="getStatus()">Refresh</button></h2>
+        <dl id="status">
+            <dt>Active</dt>
+            <dd id="status-active"></dd>
+            <dt>Network Name</dt>
+            <dd id="status-name"></dd>
+            <dt>IP Address</dt>
+            <dd id="status-ip"></dd>
+        </dl>
+        <h2>Set Network</h2>
+        <div>
+            <label>Available:<label>
+            <select id="network-selecter" onchange="onNetworkSelectionChanged()"></select>
+            <button onclick="getNetworks()">Refresh</button>
+        </div>
+        <div>
+            <label>SSID:<label>
+            <input type="text" id="network-name-input" name="network-name" />
+            <label>Password:<label>
+            <input type="password" id="network-password-input" />
+            <button onclick="setNetworkCofig()">Save</button>
+        </div>
+    </body>
+</html>
