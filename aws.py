@@ -10,15 +10,18 @@ def get_date_time():
 
 def getShadow(size=None):
     import awsiot_sign
-
-    access_key = 'AKIAYBXV5UBP7XHO23UM'
-    secret_access_key = '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'
-    end_point_prefix = 'a3ifeswmcxw4rt-ats'
-    thing_id = 'sprinkler'
-    region = 'us-west-2'
+    import json
+    config = {}
+    with open('aws.json', 'r') as f:
+        config = json.loads(f.read())
 
     signed = awsiot_sign.request_gen(\
-        end_point_prefix, thing_id, access_key, secret_access_key, get_date_time(), region=region)
+        config['end_point_prefix'], \
+        config['thing_id'], \
+        config['access_key'], \
+        config['secret_access_key'], \
+        get_date_time(), \
+        region=config['region'])
 
     from microWebCli import MicroWebCli
     cli = MicroWebCli(auth = AuthIgnore())
