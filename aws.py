@@ -8,12 +8,14 @@ def get_date_time():
     time_now_utc = "{0:02d}{1:02d}{2:02d}".format(time_tuple[3], time_tuple[4], time_tuple[5])
     return (datestamp + "T" + time_now_utc + "Z")
 
+def getConfig():    
+    import json
+    with open('aws.json', 'r') as f:
+        return json.loads(f.read())
+
 def makeShadowRequest(method = 'GET', body = '', contentType = 'application/json'):
     import awsiot_sign
-    import json
-    config = {}
-    with open('aws.json', 'r') as f:
-        config = json.loads(f.read())
+    config = getConfig()
 
     signed = awsiot_sign.request_gen(\
         config['end_point_prefix'], \

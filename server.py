@@ -3,9 +3,11 @@ def handleGetStatus(httpClient, httpResponse):
     import wifiConnect
     httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
 
+
 def handleGetNetworks(httpClient, httpResponse):
     import wifiConnect
     httpResponse.WriteResponseJSONOk(wifiConnect.scan_networks())
+
 
 def handlePostNetworkConfig(httpClient, httpResponse):
     import wifiConnect
@@ -13,11 +15,13 @@ def handlePostNetworkConfig(httpClient, httpResponse):
     wifiConnect.save_config(body['ssid'], body['password'])
     httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
 
+
 routeHandlers = [
     ('/status', 'GET', handleGetStatus),
     ('/networks', 'GET', handleGetNetworks),
     ('/network-config', 'POST', handlePostNetworkConfig),
 ]
+
 
 def enable_server():
     import network
@@ -29,4 +33,4 @@ def enable_server():
     my_ip = '192.168.4.1'
     if ap.active():
         my_ip = ap.ifconfig()[0]
-    MicroDNSSrv.Create({ '*' : my_ip })
+    MicroDNSSrv.Create({'*': my_ip})
