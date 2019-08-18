@@ -9,24 +9,35 @@ def setup():
     global oled
     i2c = machine.I2C(-1, machine.Pin(22), machine.Pin(21))
     oled = ssd1306.SSD1306_I2C(128, 64, i2c)
-    return oled
 
 
-def render_menu(items, curr_index, going_up=false):
+def menu(items, curr_index):
+    num_lines = 5
+
+    first_line = 0
+    if curr_index > 2:
+        has_more_before = True
+        first_line = curr_index - 2
+
+    if len(items) > num_lines and first_line + num_lines > len(items):
+        first_line = len(items) - num_lines
+
+    has_more_before = first_line > 0
+    has_more_after = first_line + num_lines < len(items)
+
     global oled
     oled.fill(0)
-    first_line = 0
-    max_first_line = 3
-    if going_up:
-        max_first_line = 2
-    if curr_index > max_first_line:
-        first_line = curr_index - max_first_line
-    if first_line + 6 > len(items):
-        first_line = len(items) - 6
-    for index in range(0, min(6, len(items))):
+    # draw arrows to indicate if there are any off-screen items
+    if has_more_before:
+        for index in range(0, 5):
+            oled.hline(63 - index, index + 1, (index + 1) * 2, 1)
+    if has_more_after:
+        for index in range(0, 5):
+            oled.hline(63 - index, 63 - index, (index + 1) * 2, 1)
+    for index in range(0, min(num_lines, len(items))):
         text_color = 1
-        if index + first_line == curr_index:
+        if first_line + index == curr_index:
             text_color = 0
-            oled.fill_rect(0, index * 10, 128, 10, 1)
-        oled.text(items[first_line + index], 0, index * 10 + 1, text_color)
+            oled.fill_rect(0, index * 10 + 7, 128, 10, 1)
+        oled.text(items[first_line + index], 0, index * 10 + 8, text_color)
     oled.show()
