@@ -2,13 +2,12 @@ import machine
 import ssd1306
 
 
-oled = None
-
-
 def setup():
     global oled
     i2c = machine.I2C(-1, machine.Pin(22), machine.Pin(21))
     oled = ssd1306.SSD1306_I2C(128, 64, i2c)
+    oled.fill(0)
+    oled.show()
 
 
 def menu(items, curr_index):

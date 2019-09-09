@@ -1,10 +1,12 @@
-import wifiConnect
-import server
 import network
 import webrepl
-import machine
-safeModeDetectPin = machine.Pin(12, machine.Pin.IN, machine.Pin.PULL_UP)
-safeModeIndicatePin = machine.Pin(13, machine.Pin.OUT)
+from machine import Pin
+import micropython
+
+micropython.alloc_emergency_exception_buf(100)
+
+safeModeDetectPin = Pin(12, Pin.IN, Pin.PULL_UP)
+safeModeIndicatePin = Pin(13, Pin.OUT)
 safeModeIndicatePin.off()
 if safeModeDetectPin.value() == 0:
     safeModeIndicatePin.on()
@@ -21,8 +23,19 @@ def setup_ap():
               authmode=network.AUTH_WPA_WPA2_PSK, password="esprinkler")
 
 
-setup_ap()
+def setup():
+    setup_ap()
+    import wifiConnect
+    wifiConnect.try_connect()
+    import server
+    server.enable_server()
+    import ui
+    ui.setup()
+    import rotary
+    rotary.setup()
 
-server.enable_server()
 
-wifiConnect.try_connect()
+try:
+    setup()
+except Exception as e:
+    print(e)
