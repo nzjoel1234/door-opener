@@ -1,56 +1,46 @@
 from machine import Pin
-from menus import menu_base
+import utime
 
-menu = None
-
-
-def goto(new_menu):
-    global menu
-    menu = new_menu
-    menu.render()
-
-
-def setup():
-    goto(menu_base.get_root_menu(goto))
-
-    pin_sw = Pin(26, Pin.IN)
-    pin_sw.irq(trigger=Pin.IRQ_FALLING, handler=sw_callback)
-
-    pin_cl = Pin(14, Pin.IN)
-    pin_cl.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=cl_callback)
-
-    pin_dt = Pin(27, Pin.IN)
-    pin_dt.irq(trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING, handler=dt_callback)
-
-
-current_data = False
-rotary_history = 0b0000
 turn_cw = 0b1100
 turn_ccw = 0b1001
 
 
-def sw_callback(pin):
-    global menu
-    menu.on_select()
+class Rotary:
 
+    def __init__(self, ui):
+        self.ui = ui
+        self.current_data = False
+        self.rotary_history = 0b0000
+        self.last_click_t = None
 
-def dt_callback(pin):
-    global current_data
-    current_data = pin.value() == 1
+    def setup(self):
+        pin_sw = Pin(26, Pin.IN)
+        pin_sw.irq(trigger=Pin.IRQ_FALLING, handler=self.sw_callback)
 
+        pin_cl = Pin(14, Pin.IN)
+        pin_cl.irq(trigger=Pin.IRQ_RISING |
+                   Pin.IRQ_FALLING, handler=self.cl_callback)
 
-def cl_callback(pin):
-    global rotary_history, turn_cw, turn_ccw, menu
-    rotary_history = \
-        ((rotary_history & 0b11) << 2) \
-        + (0b10 if pin.value() == 1 else 0) \
-        + (0b01 if current_data else 0)
+        pin_dt = Pin(27, Pin.IN)
+        pin_dt.irq(trigger=Pin.IRQ_RISING |
+                   Pin.IRQ_FALLING, handler=self.dt_callback)
 
-    print('cl: ' + bin(rotary_history))
+    def sw_callback(self, pin):
+        if self.last_click_t is not None and utime.ticks_diff(utime.ticks_ms(), self.last_click_t) < 200:
+            return
+        self.last_click_t = utime.ticks_ms()
+        self.ui.on_select()
 
-    if rotary_history == turn_cw:
-        print('down')
-        menu.on_down()
-    elif rotary_history == turn_ccw:
-        print('up')
-        menu.on_up()
+    def dt_callback(self, pin):
+        self.current_data = pin.value() == 1
+
+    def cl_callback(self, pin):
+        self.rotary_history = \
+            ((self.rotary_history & 0b11) << 2) \
+            + (0b10 if pin.value() == 1 else 0) \
+            + (0b01 if self.current_data else 0)
+
+        if self.rotary_history == turn_cw:
+            self.ui.on_down()
+        elif self.rotary_history == turn_ccw:
+            self.ui.on_up()

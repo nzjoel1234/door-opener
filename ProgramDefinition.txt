@@ -13,9 +13,9 @@
   {
     "name": "Lawn",
 	"items": [
-	  [0, 20],
-	  [2, 30],
-	  [4, 60]
+	  [[0], 20],
+	  [[1], 30],
+	  [[2], 60]
 	],
 	"schedules": [
 	  [255, 150]
@@ -47,23 +47,21 @@
 	  [32, 30]
 	],
 	"schedules": [
-	  [468, 360]
+	  ["*", "*", 360]
 	]
   }
 ]
 }
 
 // Items:
-[<ZoneBitMask>, <Minutes>]
+[<ZoneIndexList>, <Minutes>]
 
 // Schedules:
-[<DaysDefinition>, ...<TimeOfDay>]
-<DaysDefinition>
-#bits      value
-1          Enabled on even days
-1          Enabled on odd days
-7          Bitmask of enabled week days
-9 bits
+[EvenOddDays, WeekDays, <TimeOfDay>]
+
+EvenOddDays = "E" | "O" | "*"
+WeekDays = ["Mo", "Tu", "Sa"] => Only Mo, Tu, Sa
+WeekDays = [] => Any day
 
 <TimeOfDay>
 Number of minutes into day 0-1439

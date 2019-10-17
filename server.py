@@ -16,21 +16,35 @@ def handlePostNetworkConfig(httpClient, httpResponse):
     httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
 
 
+def handlePostTime(httpClient, httpResponse):
+    import rtc_time
+    body = httpClient.ReadRequestContentAsJSON()
+    rtc_time.set_time(body['y'], body['mo'], body['d'],
+                      body['h'], body['mi'], body['s'])
+    httpResponse.WriteResponseOk()
+
+
 routeHandlers = [
     ('/status', 'GET', handleGetStatus),
     ('/networks', 'GET', handleGetNetworks),
     ('/network-config', 'POST', handlePostNetworkConfig),
+    ('/time', 'POST', handlePostTime),
 ]
 
 
+is_enabled = False
+init_error = ''
+
+
 def enable_server():
-    import network
-    ap = network.WLAN(network.AP_IF)
-    from microWebSrv import MicroWebSrv
-    mws = MicroWebSrv(routeHandlers=routeHandlers)
-    mws.Start(threaded=True)
-    from microDNSSrv import MicroDNSSrv
-    my_ip = '192.168.4.1'
-    if ap.active():
-        my_ip = ap.ifconfig()[0]
-    MicroDNSSrv.Create({'*': my_ip})
+    global is_enabled, init_error
+    try:
+        from microWebSrv import MicroWebSrv
+        mws = MicroWebSrv(
+            routeHandlers=routeHandlers,
+            webPath='www')
+        mws.Start(threaded=True)
+        is_enabled = True
+    except Exception as e:
+        print('server.enable_server: {}'.format(repr(e)))
+        init_error = repr(e)
