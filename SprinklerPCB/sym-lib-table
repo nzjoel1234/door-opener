@@ -1,0 +1,4 @@
+(sym_lib_table
+  (lib (name SprinklerPCB)(type Legacy)(uri ${KIPRJMOD}/SprinklerPCB.lib)(options "")(descr ""))
+  (lib (name SprinklerPCB-rescue)(type Legacy)(uri ${KIPRJMOD}/SprinklerPCB-rescue.lib)(options "")(descr ""))
+)
