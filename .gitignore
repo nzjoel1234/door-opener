@@ -1,1 +1,6 @@
 __pycache__/
+*.bin
+SprinklerPCB/fp-info-cache
+*.sch-bak
+*.bck
+*.kicad_pcb-bak
