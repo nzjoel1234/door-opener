@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="styles.css" />
+    <script type="text/javascript" src="common.js"></script>
+    <title>E-SPrinkler Configuration</title>
+    <script>
+        function setNetworkCofig() {
+            const button = d.getElementById('save-config-btn');
+            button.disabled = true;
+            const errorSpan = d.getElementById('set-config-error');
+            errorSpan.innerHTML = '';
+            postJsonRequest('/network-config', {
+                'ssid': d.getElementById('network-ssid-input').value,
+                'password': d.getElementById('network-password-input').value,
+            },
+                () => {
+                    errorSpan.innerHTML = 'Failed to set network config';
+                    button.disabled = false;
+                },
+                r => {
+                    updateStatus(JSON.parse(r.responseText));
+                    button.disabled = false;
+                });
+        }
+        function setTime() {
+            const button = d.getElementById('set-time-btn');
+            button.disabled = true;
+            const errorSpan = d.getElementById('set-time-error');
+            errorSpan.innerHTML = '';
+            const now = new Date();
+            postJsonRequest('/time', {
+                'y': now.getFullYear(),
+                'mo': now.getMonth() + 1,
+                'd': now.getDate(),
+                'h': now.getHours(),
+                'mi': now.getMinutes(),
+                's': now.getSeconds(),
+            },
+                () => {
+                    errorSpan.innerHTML = 'Failed to set time';
+                    button.disabled = false;
+                },
+                r => button.disabled = false);
+        }
+        function onNetworkSelectionChanged() {
+            d.getElementById('network-ssid-input').value = d.getElementById('network-selector').value;
+        }
+        function updateStatus(status, error) {
+            d.getElementById('get-status-error').innerHTML = error || '';
+            d.getElementById('status-active').innerHTML = status ? (status.active ? 'Yes' : 'No') : 'Loading...';
+            d.getElementById('status-ssid').innerHTML = status ? (status.active ? status.ssid : '') : 'Loading...';
+            d.getElementById('status-ip').innerHTML = status ? (status.active ? status.ip : '') : 'Loading...';
+            d.getElementById('status-rssi').innerHTML = status ? (status.active ? status.rssi : '') : 'Loading...';
+        }
+        function getStatus() {
+            const button = d.getElementById('get-status-btn');
+            button.disabled = true;
+            updateStatus();
+            getRequest('/status',
+                () => {
+                    updateStatus(null, 'Failed to get status');
+                    button.disabled = false;
+                },
+                r => {
+                    updateStatus(JSON.parse(r.responseText));
+                    button.disabled = false;
+                });
+        }
+        function getNetworks() {
+            const button = d.getElementById('get-networks-btn');
+            button.disabled = true;
+            const errorSpan = d.getElementById('get-networks-error');
+            errorSpan.innerHTML = '';
+            const selectEl = d.getElementById('network-selector');
+            selectEl.innerHTML = '';
+            addSelectOption(selectEl, 'Loading...');
+            getRequest('/networks',
+                () => {
+                    selectEl.innerHTML = '';
+                    errorSpan.innerHTML = 'Failed to get network list';
+                    button.disabled = false;
+                },
+                r => {
+                    const result = JSON.parse(r.responseText);
+                    selectEl.innerHTML = '';
+                    addSelectOption(selectEl, 'Select a network');
+                    result.forEach(network => {
+                        addSelectOption(selectEl, network.ssid + ' (' + network.rssi + ')', network.ssid);
+                    });
+                    button.disabled = false;
+                });
+        }
+        window.onload = () => {
+            getStatus();
+            getNetworks();
+            window.setInterval(
+                () => d.getElementById('time-value').innerHTML = new Date().toString(),
+                250);
+        }
+    </script>
+</head>
+
+<body>
+    <div class="header">
+        <h1>E-SPrinkler Configuration</h1>
+    </div>
+    <div class="nav">
+        <a href="index.html">Index</a>
+        <span>Config</span>
+    </div>
+    <div style="margin-left: 10px;">
+        <h2 class="sub-header">Current Status <button id="get-status-btn" onclick="getStatus()">Refresh</button></h2>
+        <div class="detail">
+            <span class="error-span" id="get-status-error"></span>
+            <dl id="status">
+                <dt>Active</dt>
+                <dd id="status-active"></dd>
+                <dt>SSID</dt>
+                <dd id="status-ssid"></dd>
+                <dt>IP Address</dt>
+                <dd id="status-ip"></dd>
+                <dt>RSSI</dt>
+                <dd id="status-rssi"></dd>
+            </dl>
+        </div>
+        <h2 class="sub-header">Set Network</h2>
+        <div class="detail">
+            <div>
+                <label>Available:<label>
+                        <select id="network-selector" onchange="onNetworkSelectionChanged()"></select>
+                        <button id="get-networks-btn" onclick="getNetworks()">Refresh</button>
+            </div>
+            <span class="error-span" id="get-networks-error"></span>
+            <dl id="status">
+                <dt>SSID</dt>
+                <dd><input type="text" id="network-ssid-input" /></dd>
+                <dt>Password</dt>
+                <dd><input type="password" id="network-password-input" /></dd>
+            </dl>
+            <span class="error-span" id="set-config-error"></span>
+            <div>
+                <button id="save-config-btn" onclick="setNetworkCofig()">Save</button>
+            </div>
+        </div>
+        <h2 class="sub-header">Set Time</h2>
+        <div class="detail">
+            <dl id="time">
+                <dt>Time</dt>
+                <dd><span id="time-value"></span></dd>
+            </dl>
+            <span class="error-span" id="set-time-error"></span>
+            <div>
+                <button id="set-time-btn" onclick="setTime()">Set Time</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

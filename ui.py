@@ -1,3 +1,4 @@
+import sys
 import machine
 import utime
 import framebuf
@@ -80,7 +81,7 @@ class UiManager:
             self.render_scheduled = False
             self.current_control.render(self.oled)
         except Exception as e:
-            print('render error: {}'.format(repr(e)))
+            sys.print_exception(e)
             self.scheduler.schedule_work(2000)  # Try render again in 2 seconds
 
     def on_up(self):
@@ -163,7 +164,7 @@ class DashboardControl(UiControl):
             if status['active']:
                 rssi = status['rssi']
         except Exception as e:
-            print('Dashboard failed to get rssi: {}'.format(repr(e)))
+            sys.print_exception(e)
         return rssi
 
     @staticmethod
@@ -281,9 +282,9 @@ class MenuControl(UiControl):
                     text, len(text), r_text_len, l_text_len))
             text = text[:max_text_len]
             if adjustable_up:
-                draw_small_up_arrow(oled, 120, line_y - 1, text_color)
+                draw_small_up_arrow(oled, 121, line_y - 1, text_color)
             if adjustable_down:
-                draw_small_down_arrow(oled, 120, line_y, text_color)
+                draw_small_down_arrow(oled, 121, line_y, text_color)
 
             oled.text(text, 0, line_y, text_color)
         oled.show()
@@ -302,16 +303,42 @@ class MenuControl(UiControl):
         self.items[self.index][1]()
 
     @staticmethod
+    def get_confirm_stop_menu(ui, get_root):
+        def get_this(): return MenuControl.get_info_menu(ui, get_root)
+        from scheduler import instance as scheduler
+
+        def stopAll():
+            if scheduler is None:
+                return
+            scheduler.stop_all()
+            ui.goto(DashboardControl(ui))
+
+        return MenuControl(ui, 'Stop All', [
+            ('Cancel', lambda: ui.goto(get_root())),
+            ('Stop', stopAll),
+        ])
+
+    @staticmethod
     def get_root_menu(ui, get_root):
         def get_this(): return MenuControl.get_root_menu(ui, get_root)
-        return MenuControl(ui, 'Main Menu', [
-            ('Back', lambda: ui.goto(get_root())),
-            ('Programs', lambda: ui.goto(
-                MenuControl.get_programs_menu(ui, get_root=get_this))),
-            ('Manual Run', lambda: ui.goto(ManualRunControl(ui, get_root=get_this))),
-            ('Info', lambda: ui.goto(
-                MenuControl.get_info_menu(ui, get_root=get_this))),
-        ])
+        from scheduler import instance as scheduler
+        items = []
+        items.append(('Back', lambda: ui.goto(get_root())))
+
+        if scheduler and scheduler.is_active():
+            items.append(('Stop All', lambda: ui.goto(
+                MenuControl.get_confirm_stop_menu(ui, get_root=get_this))))
+
+        items.append(('Programs', lambda: ui.goto(
+            MenuControl.get_programs_menu(ui, get_root=get_this))))
+
+        items.append(('Manual Run', lambda: ui.goto(
+            ManualRunControl(ui, get_root=get_this))))
+
+        items.append(('Info', lambda: ui.goto(
+            MenuControl.get_info_menu(ui, get_root=get_this))))
+
+        return MenuControl(ui, 'Main Menu', items)
 
     @staticmethod
     def get_info_menu(ui, get_root):
@@ -332,23 +359,25 @@ class MenuControl(UiControl):
         from sprinklerConfiguration import instance as config
         return MenuControl(ui, 'Programs', [
             ('Back', lambda: ui.goto(get_root())),
-        ] + list(map(
-            lambda program: (
-                program[1],
-                lambda program=program: ui.goto(
-                    MenuControl.get_program_menu(ui, program, get_root=get_this))),
-            config.get_programs() if config else [])))
+        ] + [(
+            config.get_program_name(id),
+            lambda id=id: ui.goto(
+                MenuControl.get_program_menu(ui, id, get_root=get_this)),
+        ) for id in config.get_program_ids()] if config else [])
 
     @staticmethod
-    def get_program_menu(ui, program, get_root):
+    def get_program_menu(ui, program_id, get_root):
         def start():
             from scheduler import instance as scheduler
             if not scheduler:
                 return
-            scheduler.queue_program(program[0])
+            scheduler.queue_program(program_id)
             ui.goto(DashboardControl(ui))
 
-        return MenuControl(ui, program[1], [
+        from sprinklerConfiguration import instance as config
+        name = config.get_program_name(
+            program_id) if config is not None else 'Program {}'.format(program_id)
+        return MenuControl(ui, name, [
             ('Back', lambda: ui.goto(get_root())),
             ('Start', start),
         ])
@@ -376,7 +405,7 @@ class ManualRunControl(MenuControl):
             return ''
         has_prev = any(map(lambda d: d < duration, self.durations))
         has_more = any(map(lambda d: d > duration, self.durations))
-        units = 's' if duration <= 90 else 'm'
+        units = 'm' if duration <= 90 else 'h'
         value = duration if duration <= 90 else duration // 60
         return 'off' if duration == 0 else '{}{}'.format(value, units)
 
@@ -419,7 +448,8 @@ class ManualRunControl(MenuControl):
         if not scheduler or not config:
             return
         config.save_last_manual_run(self.duration_by_zone)
-        scheduler.queue_zones(self.duration_by_zone)
+        scheduler.queue_zones({
+            k: v * 60 for k, v in self.duration_by_zone.items()})
         self.ui.goto(DashboardControl(self.ui))
 
     def update_items(self):
@@ -429,8 +459,7 @@ class ManualRunControl(MenuControl):
 
         from sprinklerConfiguration import instance as config
         if config:
-            def build_zone_item(zone):
-                zone_id, zone_name = zone
+            def build_zone_item(zone_id):
                 zone_name = config.get_zone_name(zone_id)
                 duration_text = self.get_duration_text(zone_id)
                 editing = zone_id == self.editing_zone_id
@@ -443,7 +472,8 @@ class ManualRunControl(MenuControl):
                     (zone_name, duration_text, adjustable_up, adjustable_down),
                     lambda: self.on_zone_id_selected(zone_id)
                 )
-            items = items + list(map(build_zone_item, config.get_zones()))
+            items = items + [
+                build_zone_item(id) for id in config.get_zone_ids()]
 
         if any(self.duration_by_zone.values()):
             items.append(('Start', lambda: self.start()))
@@ -526,11 +556,13 @@ class ServerStatusControl(UiControl):
             import server
             oled.fill(0)
             centered_text(oled, 'Server Status', 0)
-            oled.text('Active: {}'.format(server.is_enabled), 0, 20)
+            status = 'Pending' if server.mws is None else 'Active' if server.mws.IsStarted() else 'Inactive'
+            oled.text(status, 0, 20)
             if server.init_error:
                 multi_line_text(oled, 'Error: {}'.format(
                     server.init_error), 20)
             oled.show()
+            self.ui.schedule_render(5000)
         except Exception as e:
             oled.fill(0)
             centered_text(oled, 'Server Status', 0)

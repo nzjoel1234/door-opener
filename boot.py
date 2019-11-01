@@ -1,24 +1,27 @@
-from micropython import schedule
+import sys
 import network
 import webrepl
-from machine import Pin, I2C, Timer
+import machine
 import micropython
+import _thread
+import utime
 
 micropython.alloc_emergency_exception_buf(100)
 
-shiftR_enable_pin = Pin(26, Pin.OUT)
+shiftR_enable_pin = machine.Pin(26, machine.Pin.OUT)
 shiftR_enable_pin.on()
 
-safeModeDetectPin = Pin(23, Pin.IN, Pin.PULL_UP)
+safeModeDetectPin = machine.Pin(23, machine.Pin.IN, machine.Pin.PULL_UP)
 
-safeModeIndicatePin = Pin(2, Pin.OUT)  # onboard blue LED
+safeModeIndicatePin = machine.Pin(2, machine.Pin.OUT)  # onboard blue LED
 safeModeIndicatePin.off()
 
 if safeModeDetectPin.value() == 0:
     safeModeIndicatePin.on()
-    import sys
+    print('*****')
+    print('Booted into SAFE MODE')
+    print('*****')
     sys.exit()
-
 
 webrepl.start(password='admin')
 
@@ -31,25 +34,10 @@ def setup_ap():
               password="esprinkler")
 
 
-def do_tasks(t):
-
-    from ui import instance as ui_manager
-    if ui_manager:
-        ui_manager.do_tasks()
-
-    from scheduler import instance as schedule_manager
-    if schedule_manager:
-        schedule_manager.do_tasks()
-
-
 def setup():
     loadingControl = None
     try:
-        i2c = I2C(-1, Pin(22), Pin(21))
-
-        def on_timer(t): return schedule(do_tasks, 0)
-        Timer(-1).init(period=100, mode=Timer.PERIODIC,
-                       callback=on_timer)
+        i2c = machine.I2C(-1, machine.Pin(22), machine.Pin(21))
 
         import ui
         ui_man = ui.setup(i2c)
@@ -65,8 +53,11 @@ def setup():
         from scheduler import setup as setupScheduler
         from shiftR import ShiftR
         sprinklerConfiguration = SetupConfig()
-        shiftR = ShiftR(shiftR_enable_pin, Pin(14, Pin.OUT),
-                        Pin(13, Pin.OUT), Pin(27, Pin.OUT), sprinklerConfiguration.get_zone_num())
+        shiftR = ShiftR(shiftR_enable_pin,
+                        machine.Pin(14, machine.Pin.OUT),
+                        machine.Pin(13, machine.Pin.OUT),
+                        machine.Pin(27, machine.Pin.OUT),
+                        sprinklerConfiguration.get_zone_num())
         shiftR.setup()
         setupScheduler(SetupConfig(), shiftR)
 
@@ -79,7 +70,6 @@ def setup():
         setup_ap()
 
         loadingControl.set_status("server")
-        import _thread
         import server
         # For some reason starting server on main thread makes first server request VERY slow (>20secs)
         _thread.start_new_thread(server.enable_server, ())
@@ -94,11 +84,24 @@ def setup():
     except Exception as e:
         if loadingControl:
             loadingControl.set_detail(repr(e))
+        sys.print_exception(e)
         raise
 
 
-try:
-    setup()
-except Exception as e:
-    print('Initialisation error: {}'.format(repr(e)))
-    raise
+def do_tasks():
+    while True:
+        try:
+            from ui import instance as ui_manager
+            if ui_manager:
+                ui_manager.do_tasks()
+
+            from scheduler import instance as schedule_manager
+            if schedule_manager:
+                schedule_manager.do_tasks()
+        except Exception as e:
+            sys.print_exception(e)
+        utime.sleep_ms(100)
+
+
+_thread.start_new_thread(setup, ())
+_thread.start_new_thread(do_tasks, ())

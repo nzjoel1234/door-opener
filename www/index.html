@@ -2,171 +2,219 @@
 <html>
 
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="styles.css" />
+    <script type="text/javascript" src="common.js"></script>
     <title>E-SPrinkler</title>
     <script>
-        const d = document;
-        function getRequest(url, onFailure, onSuccess) {
-            const request = new XMLHttpRequest();
-            request.onreadystatechange = () => {
-                if (request.readyState != 4) {
-                    return;
-                }
-                if (request.status !== 200) {
-                    onFailure(request);
-                    return;
-                }
-                onSuccess(request);
-            }
-            request.open('GET', url);
-            request.send();
-            return request;
-        }
-        function postJsonRequest(url, data, onFailure, onSuccess) {
-            const request = new XMLHttpRequest();
-            request.onreadystatechange = () => {
-                if (request.readyState != 4) {
-                    return;
-                }
-                if (request.status !== 200) {
-                    onFailure(request);
-                    return;
-                }
-                onSuccess(request);
-            }
-            request.open('POST', url);
-            request.setRequestHeader("Content-type", "application/json");
-            request.send(JSON.stringify(data));
-            return request;
-        }
-        function setNetworkCofig() {
-            const button = d.getElementById('save-config-btn');
+        function stopAll() {
+            const button = d.getElementById('stop-all-btn');
             button.disabled = true;
-            postJsonRequest('/network-config', {
-                'ssid': d.getElementById('network-ssid-input').value,
-                'password': d.getElementById('network-password-input').value,
-            },
+            const errorSpan = d.getElementById('stop-all-error');
+            errorSpan.innerHTML = '';
+            postJsonRequest('/stop', null,
                 () => {
-                    alert('Failed to set network config');
+                    errorSpan.innerHTML = 'Failed to stop all';
                     button.disabled = false;
                 },
                 r => {
-                    updateStatus(JSON.parse(r.responseText));
                     button.disabled = false;
                 });
         }
-        function setTime() {
-            const button = d.getElementById('set-time-btn');
+        function startProgram() {
+            const selectEl = d.getElementById('program-selector');
+            if (selectEl.value == '') {
+                return
+            }
+            const button = d.getElementById('start-program-btn');
             button.disabled = true;
-            const now = new Date();
-            postJsonRequest('/time', {
-                'y': now.getFullYear(),
-                'mo': now.getMonth() + 1,
-                'd': now.getDate(),
-                'h': now.getHours(),
-                'mi': now.getMinutes(),
-                's': now.getSeconds(),
+            const errorSpan = d.getElementById('run-program-error');
+            errorSpan.innerHTML = '';
+            postJsonRequest('/start', {
+                'type': 'program',
+                'id': +selectEl.value,
             },
                 () => {
-                    alert('Failed to set time');
-                    button.disabled = false;
-                },
-                r => button.disabled = false);
-        }
-        function onNetworkSelectionChanged() {
-            d.getElementById('network-ssid-input').value = d.getElementById('network-selecter').value;
-        }
-        function updateStatus(status) {
-            d.getElementById('status-active').innerHTML = status ? (status.active ? 'Yes' : 'No') : 'Loading...';
-            d.getElementById('status-ssid').innerHTML = status ? (status.active ? status.ssid : '') : 'Loading...';
-            d.getElementById('status-ip').innerHTML = status ? (status.active ? status.ip : '') : 'Loading...';
-            d.getElementById('status-rssi').innerHTML = status ? (status.active ? status.rssi : '') : 'Loading...';
-        }
-        function getStatus() {
-            const button = d.getElementById('get-status-btn')
-            button.disabled = true;
-            updateStatus();
-            getRequest('/status',
-                () => {
-                    alert('Failed to get status');
+                    errorSpan.innerHTML = 'Failed to start program';
                     button.disabled = false;
                 },
                 r => {
-                    updateStatus(JSON.parse(r.responseText));
                     button.disabled = false;
                 });
         }
-        function addSelectOption(selectElement, label, value) {
-            var optionEl = d.createElement('option');
-            optionEl.setAttribute('value', value || '');
-            optionEl.innerHTML = label;
-            selectElement.appendChild(optionEl);
-        }
-        function getNetworks() {
-            const button = d.getElementById('get-networks-btn');
+        function startCustomProgram() {
+            const button = d.getElementById('start-custom-program-btn');
             button.disabled = true;
-            const selectEl = d.getElementById('network-selecter');
+            const errorSpan = d.getElementById('custom-program-error');
+            errorSpan.innerHTML = '';
+            const selectEl = d.getElementById('program-selector');
+            const rows = d.getElementsByClassName('custom-program-row');
+            postJsonRequest('/start', {
+                'type': 'custom',
+                'items': Array.from(d
+                    .getElementById('custom-program-tbody')
+                    .getElementsByClassName('zone-row')
+                )
+                    .map(row => {
+                        const duration = +row.querySelector('input[name="duration"]').value;
+                        const units = +row.querySelector('select[name="units"]').value;
+                        return {
+                            zone_id: +row.getAttribute('data-zone-id'),
+                            duration: duration * units,
+                        };
+                    }),
+            },
+                () => {
+                    errorSpan.innerHTML = 'Failed to start program';
+                    button.disabled = false;
+                },
+                r => {
+                    button.disabled = false;
+                });
+        }
+        function getPrograms() {
+            const button = d.getElementById('get-programs-btn');
+            button.disabled = true;
+            const errorSpan = d.getElementById('run-program-error');
+            errorSpan.innerHTML = '';
+            const selectEl = d.getElementById('program-selector');
             selectEl.innerHTML = '';
             addSelectOption(selectEl, 'Loading...');
-            getRequest('/networks',
+            getRequest('/programs',
                 () => {
-                    alert('Failed to get network list');
+                    selectEl.innerHTML = '';
+                    errorSpan.innerHTML = 'Failed to get program list';
                     button.disabled = false;
                 },
                 r => {
                     const result = JSON.parse(r.responseText);
                     selectEl.innerHTML = '';
-                    addSelectOption(selectEl, 'Select a network');
-                    result.forEach(network => {
-                        addSelectOption(selectEl, network.ssid + ' (' + network.rssi + ')', network.ssid);
+                    addSelectOption(selectEl, 'Select a program');
+                    result.forEach(program => {
+                        addSelectOption(selectEl, program.name, program.id);
                     });
                     button.disabled = false;
                 });
         }
+        count = 0;
+        function getRowByZoneId(id) {
+            Array.from(d
+                .getElementById('custom-program-tbody')
+                .getElementsByClassName('zone-row'))
+                .find(row => id == +row.getAttribute('data-zone-id'));
+        }
+        function updateZoneList(zones) {
+            const tbodyEl = d.getElementById('custom-program-tbody');
+
+            // remove old zones
+            Array.from(tbodyEl.getElementsByClassName('zone-row'))
+                .filter(el => zones.find(z => z.id == el.getAttribute('data-zone-id')) == null)
+                .forEach(el => tbodyEl.removeChild(el));
+
+            zones.forEach(zone => {
+                const zoneId = zone.id;
+                const existingRowEl = Array.from(d
+                    .getElementById('custom-program-tbody')
+                    .getElementsByClassName('zone-row'))
+                    .find(row => +row.getAttribute('data-zone-id') == zoneId);
+                if (existingRowEl) {
+                    existingRowEl.getElementsByClassName('zone-name')[0].innerHTML = zone.name;
+                    return;
+                }
+                const rowEl = d.createElement('tr');
+                rowEl.className = 'zone-row';
+                rowEl.setAttribute('data-zone-id', zone.id)
+                const nameCellEl = d.createElement('td');
+                nameCellEl.className = 'zone-name';
+                nameCellEl.innerHTML = zone.name;
+                rowEl.appendChild(nameCellEl);
+                const durationInputEl = d.createElement('input');
+                durationInputEl.type = 'number';
+                durationInputEl.name = 'duration';
+                durationInputEl.value = 0;
+                const durationUnitsSelectorEl = d.createElement('select');
+                durationUnitsSelectorEl.className = 'units-selector';
+                durationUnitsSelectorEl.name = 'units';
+                addSelectOption(durationUnitsSelectorEl, 'Secs', 1);
+                addSelectOption(durationUnitsSelectorEl, 'Mins', 60);
+                addSelectOption(durationUnitsSelectorEl, 'Hours', 60 * 60);
+                const durationCellEl = d.createElement('td');
+                durationCellEl.appendChild(durationInputEl);
+                durationCellEl.appendChild(durationUnitsSelectorEl);
+                rowEl.appendChild(durationCellEl);
+                tbodyEl.appendChild(rowEl);
+                tbodyEl.inset
+            });
+        }
+        function getZones() {
+            const button = d.getElementById('get-zones-btn');
+            button.disabled = true;
+            const errorSpan = d.getElementById('custom-program-error');
+            errorSpan.innerHTML = '';
+            const loadingSpan = d.getElementById('custom-program-loading');
+            loadingSpan.innerHTML = 'loading...';
+
+            getRequest('/zones',
+                () => {
+                    loadingSpan.innerHTML = '';
+                    errorSpan.innerHTML = 'Failed to get zone list';
+                    button.disabled = false;
+                },
+                r => {
+                    loadingSpan.innerHTML = '';
+                    updateZoneList(JSON.parse(r.responseText));
+                    button.disabled = false;
+                });
+        }
         window.onload = () => {
-            getStatus();
-            getNetworks();
-            window.setInterval(
-                () => d.getElementById('time-value').innerHTML = new Date().toString(),
-                250);
+            getZones();
+            getPrograms();
         }
     </script>
 </head>
 
 <body>
-    <h1>E-SPrinkler Network Configuration</h1>
-    <h2>Current Status <button id="get-status-btn" onclick="getStatus()">Refresh</button></h2>
-    <dl id="status">
-        <dt>Active</dt>
-        <dd id="status-active"></dd>
-        <dt>SSID</dt>
-        <dd id="status-ssid"></dd>
-        <dt>IP Address</dt>
-        <dd id="status-ip"></dd>
-        <dt>RSSI</dt>
-        <dd id="status-rssi"></dd>
-    </dl>
-    <h2>Set Network</h2>
-    <div>
-        <label>Available:<label>
-                <select id="network-selecter" onchange="onNetworkSelectionChanged()"></select>
-                <button id="get-networks-btn" onclick="getNetworks()">Refresh</button>
+    <div class="header">
+        <h1>E-SPrinkler</h1>
     </div>
-    <dl id="status">
-        <dt>SSID</dt>
-        <dd><input type="text" id="network-ssid-input" /></dd>
-        <dt>Password</dt>
-        <dd><input type="password" id="network-password-input" /></dd>
-    </dl>
-    <div>
-        <button id="save-config-btn" onclick="setNetworkCofig()">Save</button>
+    <div class="nav">
+        <span>Index</span>
+        <a href="config.html">Config</a>
     </div>
-    <h2>Set Time</h2>
-    <dl id="time">
-        <dt>Time</dt>
-        <dd><span id="time-value"></span></dd>
-    </dl>
-    <div>
-        <button id="set-time-btn" onclick="setTime()">Set Time</button>
+    <div style="margin-left: 10px;">
+        <h2 class="sub-header">Stop All</h2>
+        <div class="detail">
+            <div>
+                <button id="stop-all-btn" onclick="stopAll()">Stop All</button>
+            </div>
+            <span class="error-span" id="stop-all-error"></span>
+        </div>
+
+        <h2 class="sub-header">Run Program <button id="get-programs-btn" onclick="getPrograms()">Refresh</button>
+        </h2>
+        <div class="detail">
+            <div>
+                <label>Programs:<label>
+                        <select id="program-selector"></select>
+                        <button id="start-program-btn" onclick="startProgram()">Start</button>
+            </div>
+            <span class="error-span" id="run-program-error"></span>
+        </div>
+
+        <h2 class="sub-header">Custom Program <button id="get-zones-btn" onclick="getZones()">Refresh</button></h2>
+        <div class="detail">
+            <span class="loading-span" id="custom-program-loading"></span>
+            <span class="error-span" id="custom-program-error"></span>
+            <table>
+                <thead>
+                    <th style="min-width: 150px; text-align: left;">Zone</th>
+                    <th style="min-width: 150px; text-align: left;">Duration</th>
+                    <th><button id="start-custom-program-btn" onclick="startCustomProgram()">Start</button></th>
+                </thead>
+                <tbody id="custom-program-tbody">
+                </tbody>
+            </table>
+        </div>
     </div>
 </body>
 

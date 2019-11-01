@@ -28,7 +28,7 @@ class ShiftR:
 
     def set_enabled_outputs(self, enabled_outputs):
         self.pin_latch.off()
-        for i in range(self.n_outputs):
+        for i in sorted(range(self.n_outputs), reverse=True):
             self.pin_clk.off()
             self.pin_ser.value(0 if i in enabled_outputs else 1)
             self.pin_clk.on()

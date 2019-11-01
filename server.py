@@ -24,20 +24,71 @@ def handlePostTime(httpClient, httpResponse):
     httpResponse.WriteResponseOk()
 
 
+def handleGetPrograms(httpClient, httpResponse):
+    from sprinklerConfiguration import SprinklerConfiguration
+    config = SprinklerConfiguration()
+    if config is None:
+        httpResponse.WriteResponseInternalServerError()
+        return
+    httpResponse.WriteResponseJSONOk([
+        {'id': id, 'name': config.get_program_name(id)}
+        for id in config.get_program_ids()
+    ])
+
+
+def handleGetZones(httpClient, httpResponse):
+    from sprinklerConfiguration import instance as config
+    if config is None:
+        httpResponse.WriteResponseInternalServerError()
+        return
+    httpResponse.WriteResponseJSONOk([
+        {'id': id, 'name': config.get_zone_name(id)}
+        for id in config.get_zone_ids()
+    ])
+
+
+def handleStart(httpClient, httpResponse):
+    from scheduler import instance as scheduler
+    if scheduler is None:
+        httpResponse.WriteResponseInternalServerError()
+        return
+    body = httpClient.ReadRequestContentAsJSON()
+    if body['type'] == 'program':
+        scheduler.queue_program(int(body['id']))
+    else:
+        scheduler.queue_zones({
+            i['zone_id']: i['duration'] for i in body['items']
+        })
+    httpResponse.WriteResponseOk()
+
+
+def handleStop(httpClient, httpResponse):
+    from scheduler import instance as scheduler
+    if scheduler is None:
+        httpResponse.WriteResponseInternalServerError()
+        return
+    scheduler.stop_all()
+    httpResponse.WriteResponseOk()
+
+
 routeHandlers = [
     ('/status', 'GET', handleGetStatus),
     ('/networks', 'GET', handleGetNetworks),
     ('/network-config', 'POST', handlePostNetworkConfig),
     ('/time', 'POST', handlePostTime),
+    ('/programs', 'GET', handleGetPrograms),
+    ('/zones', 'GET', handleGetZones),
+    ('/start', 'POST', handleStart),
+    ('/stop', 'POST', handleStop),
 ]
 
 
-is_enabled = False
+mws = None
 init_error = ''
 
 
 def enable_server():
-    global is_enabled, init_error
+    global mws, init_error
     try:
         from microWebSrv import MicroWebSrv
         mws = MicroWebSrv(
@@ -46,5 +97,6 @@ def enable_server():
         mws.Start(threaded=True)
         is_enabled = True
     except Exception as e:
-        print('server.enable_server: {}'.format(repr(e)))
+        import sys
+        sys.print_exception(e)
         init_error = repr(e)
