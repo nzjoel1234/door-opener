@@ -25,14 +25,13 @@ def handlePostTime(httpClient, httpResponse):
 
 
 def handleGetPrograms(httpClient, httpResponse):
-    from sprinklerConfiguration import SprinklerConfiguration
-    config = SprinklerConfiguration()
+    from sprinklerConfiguration import instance as config
     if config is None:
         httpResponse.WriteResponseInternalServerError()
         return
     httpResponse.WriteResponseJSONOk([
-        {'id': id, 'name': config.get_program_name(id)}
-        for id in config.get_program_ids()
+        {'id': p.id, 'name': p.name}
+        for p in config.get_programs()
     ])
 
 
@@ -42,8 +41,8 @@ def handleGetZones(httpClient, httpResponse):
         httpResponse.WriteResponseInternalServerError()
         return
     httpResponse.WriteResponseJSONOk([
-        {'id': id, 'name': config.get_zone_name(id)}
-        for id in config.get_zone_ids()
+        {'id': z.id, 'name': z.name}
+        for z in config.get_zones()
     ])
 
 

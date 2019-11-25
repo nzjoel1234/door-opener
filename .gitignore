@@ -4,3 +4,5 @@ SprinklerPCB/fp-info-cache
 *.sch-bak
 *.bck
 *.kicad_pcb-bak
+*.mpy
+*.mine.json

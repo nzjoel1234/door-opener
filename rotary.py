@@ -18,22 +18,14 @@ class Rotary:
         self.on_up = lambda x: ui.on_up()
         self.on_select = lambda x: ui.on_select()
 
-    def setup(self):
-        pin_sw = Pin(32, Pin.IN)
+    def setup(self, pin_sw, pin_cl, pin_dt):
         pin_sw.irq(trigger=Pin.IRQ_FALLING, handler=self.sw_callback)
-
-        pin_cl = Pin(25, Pin.IN)
         pin_cl.irq(trigger=Pin.IRQ_RISING |
                    Pin.IRQ_FALLING, handler=self.cl_callback)
-
-        pin_dt = Pin(33, Pin.IN)
         pin_dt.irq(trigger=Pin.IRQ_RISING |
                    Pin.IRQ_FALLING, handler=self.dt_callback)
 
     def sw_callback(self, pin):
-        if self.last_click_t is not None and utime.ticks_diff(utime.ticks_ms(), self.last_click_t) < 200:
-            return
-        self.last_click_t = utime.ticks_ms()
         schedule(self.on_select, 0)
 
     def dt_callback(self, pin):

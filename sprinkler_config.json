@@ -1,30 +1,19 @@
 {
     "zones": {
         "0": {
-            "name": "Lawn Front",
+            "name": "Lawn 0",
             "group": "lawn"
         },
         "1": {
-            "name": "Lawn South",
+            "name": "Lawn 1",
             "group": "lawn"
         },
         "2": {
-            "name": "Lawn North",
+            "name": "Lawn 2",
             "group": "lawn"
         },
         "3": {
-            "name": "Front Garden"
-        },
-        "5": {
-            "name": "Flower Beds"
-        },
-        "6": {
-            "name": "Vege Beds",
-            "group": "veges"
-        },
-        "7": {
-            "name": "Greenhouse",
-            "group": "veges"
+            "name": "Test"
         }
     },
     "programs": [
@@ -33,20 +22,20 @@
             "zones": [
                 {
                     "id": 0,
-                    "duration": 1
+                    "duration": 5
                 },
                 {
                     "id": 1,
-                    "duration": 2
+                    "duration": 5
                 },
                 {
                     "id": 2,
-                    "duration": 3
+                    "duration": 5
                 }
             ],
             "schedules": [
                 {
-                    "start_time": 810
+                    "start_time": 220
                 },
                 {
                     "odd_days": false,
@@ -55,39 +44,6 @@
                 {
                     "even_days": false,
                     "start_time": 812
-                }
-            ]
-        },
-        {
-            "name": "Veges",
-            "zones": [
-                {
-                    "id": 6,
-                    "duration": 2
-                },
-                {
-                    "id": 7,
-                    "duration": 1
-                }
-            ],
-            "schedules": [
-                {
-                    "start_time": 813
-                },
-                {
-                    "week_days": [
-                        1,
-                        3
-                    ],
-                    "start_time": 814
-                },
-                {
-                    "week_days": [
-                        2,
-                        4,
-                        6
-                    ],
-                    "start_time": 815
                 }
             ]
         }

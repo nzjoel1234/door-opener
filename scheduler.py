@@ -37,12 +37,12 @@ class Scheduler:
 
             if now > self.last_schedule_check:
                 # see if any scheduled programs are ready to be added to pending queue
-                program_ids = self.get_program_starts_between_times(
+                starts = self.get_starts_between_times(
                     self.last_schedule_check, now)
 
-                if program_ids is not None:
-                    for program_id in program_ids:
-                        self.queue_program(program_id)
+                if starts is not None:
+                    for start in starts:
+                        self.queue_program(start[1])
 
                 self.last_schedule_check = now
 
@@ -51,23 +51,27 @@ class Scheduler:
                 lambda z: z[1] > now,
                 self.active_queue))
 
-            active_group_ids = list(filter(
-                lambda g: g is not None,
-                map(lambda z: self.config.get_group_id_by_zone(z[0]),
-                    self.active_queue)))
+            active_groups = [
+                z.group
+                for z in [
+                    self.config.get_zone(i[0])
+                    for i in self.active_queue
+                ]
+                if z.group is not None
+            ]
 
             with self.queue_lock:
                 new_pending_queue = []
                 for pending in self.pending_queue:
                     zone_id, duration_s = pending
-                    if duration_s <= 0:
+                    zone = self.config.get_zone(zone_id)
+                    if not zone or duration_s <= 0:
                         continue
-                    group_id = self.config.get_group_id_by_zone(zone_id)
-                    if group_id in active_group_ids or zone_id in map(lambda z: z[0], self.active_queue):
+                    if zone.group in active_groups or any([z for z in self.active_queue if z[0] == zone.id]):
                         new_pending_queue.append(pending)
                         continue
-                    if group_id is not None:
-                        active_group_ids.append(group_id)
+                    if zone.group is not None:
+                        active_groups.append(zone.group)
                     self.active_queue.append((zone_id, now + 1 + duration_s))
                 self.pending_queue = new_pending_queue
 
@@ -111,34 +115,49 @@ class Scheduler:
     def queue_zone(self, zone_id, duration_s):
         self.queue_zones({zone_id: duration_s})
 
-    def queue_program(self, program_id: int):
-        self.queue_zones(self.config.get_program_zones(program_id))
+    def queue_program(self, program_id):
+        program = self.config.get_program(program_id)
+        if not program:
+            return
+        self.queue_zones({
+            z.id: z.duration
+            for z in program.zones
+        })
 
     def get_next_start_time(self, since_secs):
-        programs_schedule_in = list(
-            filter(
-                lambda s: s is not None,
-                [self.config.get_next_program_start(id, since_secs) for id in self.config.get_program_ids()]))
+        programs_schedule_in = [
+            s for s in [
+                self.config.get_next_program_start(p, since_secs)
+                for p in self.config.get_programs()
+            ] if s is not None
+        ]
         if not any(programs_schedule_in):
             return None
         return sorted(programs_schedule_in)[0]
 
-    def get_program_start_times_between_times(self, program_id, since_secs, until_secs):
+    def get_program_start_times_between_times(self, program, since_secs, until_secs):
         times = []
         t = since_secs
         while True:
-            start_time = self.config.get_next_program_start(program_id, t)
+            start_time = self.config.get_next_program_start(program, t)
             if start_time is None or start_time > until_secs:
                 return times
             times.append(times)
             t = start_time + 1
 
-    def get_program_starts_between_times(self, since_secs, until_secs):
-        res = []
-        for program_id in self.config.get_program_ids():
-            for start_time in self.get_program_start_times_between_times(program_id, since_secs, until_secs):
-                res.append((program_id, start_time))
-        return list(map(lambda i: i[0], sorted(res, key=lambda i: i[1])))
+    def get_starts_between_times(self, since_secs, until_secs):
+        return sorted([item for sublist in [
+            [
+                (start_time, program.id)
+                for start_time in
+                self.get_program_start_times_between_times(
+                    program, since_secs, until_secs)
+            ]
+            for program in self.config.get_programs()
+        ] for item in sublist], key=lambda i: i[0])
+
+
+        [item for sublist in l for item in sublist]
 
 
 instance = None

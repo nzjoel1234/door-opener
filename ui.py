@@ -1,3 +1,4 @@
+from micropython import schedule
 import sys
 import machine
 import utime
@@ -57,6 +58,19 @@ def move_index(delta, index, items):
     nex_index = index + delta
     return min(len(items) - 1, nex_index) if delta > 0 else max(0, nex_index)
 
+class NoInterrupts:
+
+    def __enter__(self):
+        self.state = machine.disable_irq()
+        return self.state
+    
+    def __exit__(self, type, value, traceback):
+        machine.enable_irq(self.state)
+
+
+EVENT_UP = 0
+EVENT_DOWN = 1
+EVENT_SELECT = 2
 
 class UiManager:
 
@@ -66,6 +80,9 @@ class UiManager:
         self.scheduler = WorkScheduler()
         self.goto(LoadingControl(self))
         self.lock = _thread.allocate_lock()
+        self.events = [None] * 10
+        self.event_count = 0
+        self.call_on_event = self.on_event
 
     def goto(self, new_control):
         self.current_control = new_control
@@ -75,7 +92,19 @@ class UiManager:
         self.scheduler.schedule_work(millis)
 
     def do_tasks(self):
+        global EVENT_UP, EVENT_DOWN, EVENT_SELECT
         try:
+            with NoInterrupts() as lock:
+                for i in range(self.event_count):
+                    event = self.events[i]
+                    if event == EVENT_UP:
+                        self.current_control.on_up()
+                    elif event == EVENT_DOWN:
+                        self.current_control.on_down()
+                    elif event == EVENT_SELECT:
+                        self.current_control.on_select()
+                self.event_count = 0
+
             if not self.scheduler.work_pending():
                 return
             self.render_scheduled = False
@@ -83,18 +112,21 @@ class UiManager:
         except Exception as e:
             sys.print_exception(e)
             self.scheduler.schedule_work(2000)  # Try render again in 2 seconds
+    
+    def on_event(self, event):
+        if self.event_count >= len(self.events):
+            return
+        self.events[self.event_count] = event
+        self.event_count = self.event_count + 1
 
     def on_up(self):
-        with self.lock:
-            self.current_control.on_up()
+        schedule(self.call_on_event, (EVENT_UP))
 
     def on_down(self):
-        with self.lock:
-            self.current_control.on_down()
+        schedule(self.call_on_event, (EVENT_DOWN))
 
     def on_select(self):
-        with self.lock:
-            self.current_control.on_select()
+        schedule(self.call_on_event, (EVENT_SELECT))
 
 
 class UiControl:
@@ -278,8 +310,6 @@ class MenuControl(UiControl):
                 l_text = '{{:<{}}}'.format(
                     l_text_len).format(text[:l_text_len])
                 text = '{} {}'.format(l_text, r_text[:r_text_len])
-                print('t: {} #{} ({}-{})'.format(
-                    text, len(text), r_text_len, l_text_len))
             text = text[:max_text_len]
             if adjustable_up:
                 draw_small_up_arrow(oled, 121, line_y - 1, text_color)
@@ -303,22 +333,6 @@ class MenuControl(UiControl):
         self.items[self.index][1]()
 
     @staticmethod
-    def get_confirm_stop_menu(ui, get_root):
-        def get_this(): return MenuControl.get_info_menu(ui, get_root)
-        from scheduler import instance as scheduler
-
-        def stopAll():
-            if scheduler is None:
-                return
-            scheduler.stop_all()
-            ui.goto(DashboardControl(ui))
-
-        return MenuControl(ui, 'Stop All', [
-            ('Cancel', lambda: ui.goto(get_root())),
-            ('Stop', stopAll),
-        ])
-
-    @staticmethod
     def get_root_menu(ui, get_root):
         def get_this(): return MenuControl.get_root_menu(ui, get_root)
         from scheduler import instance as scheduler
@@ -326,8 +340,14 @@ class MenuControl(UiControl):
         items.append(('Back', lambda: ui.goto(get_root())))
 
         if scheduler and scheduler.is_active():
+            def stopAll(ui=ui, scheduler=scheduler):
+                scheduler.stop_all()
+                ui.goto(DashboardControl(ui))
             items.append(('Stop All', lambda: ui.goto(
-                MenuControl.get_confirm_stop_menu(ui, get_root=get_this))))
+                MenuControl.get_confirm_menu(ui,
+                    get_root=get_this,
+                    on_confirm=stopAll,
+                    text='Stop All')))),
 
         items.append(('Programs', lambda: ui.goto(
             MenuControl.get_programs_menu(ui, get_root=get_this))))
@@ -351,6 +371,11 @@ class MenuControl(UiControl):
                 ApStatusControl(ui, get_root=get_this))),
             ('Server Status', lambda: ui.goto(
                 ServerStatusControl(ui, get_root=get_this))),
+            ('Reboot', lambda: ui.goto(
+                MenuControl.get_confirm_menu(ui,
+                    get_root=get_this,
+                    on_confirm=lambda: machine.reset(),
+                    text='Reboot'))),
         ])
 
     @staticmethod
@@ -360,26 +385,28 @@ class MenuControl(UiControl):
         return MenuControl(ui, 'Programs', [
             ('Back', lambda: ui.goto(get_root())),
         ] + [(
-            config.get_program_name(id),
-            lambda id=id: ui.goto(
-                MenuControl.get_program_menu(ui, id, get_root=get_this)),
-        ) for id in config.get_program_ids()] if config else [])
+            p.name,
+            lambda p=p: ui.goto(
+                MenuControl.get_program_menu(ui, p, get_root=get_this)),
+        ) for p in config.get_programs()] if config else [])
 
     @staticmethod
-    def get_program_menu(ui, program_id, get_root):
-        def start():
+    def get_program_menu(ui, program, get_root):
+        def start(id=program.id):
             from scheduler import instance as scheduler
             if not scheduler:
                 return
-            scheduler.queue_program(program_id)
+            scheduler.queue_program(id)
             ui.goto(DashboardControl(ui))
 
-        from sprinklerConfiguration import instance as config
-        name = config.get_program_name(
-            program_id) if config is not None else 'Program {}'.format(program_id)
-        return MenuControl(ui, name, [
+        return MenuControl.get_confirm_menu(
+            ui, get_root, start, 'Start')
+
+    @staticmethod
+    def get_confirm_menu(ui, get_root, on_confirm, text='Confirm'):
+        return MenuControl(ui, 'Confirm', [
             ('Back', lambda: ui.goto(get_root())),
-            ('Start', start),
+            (text, on_confirm),
         ])
 
 
@@ -459,21 +486,20 @@ class ManualRunControl(MenuControl):
 
         from sprinklerConfiguration import instance as config
         if config:
-            def build_zone_item(zone_id):
-                zone_name = config.get_zone_name(zone_id)
-                duration_text = self.get_duration_text(zone_id)
-                editing = zone_id == self.editing_zone_id
-                duration = self.get_duration(zone_id)
+            def build_zone_item(zone):
+                duration_text = self.get_duration_text(zone.id)
+                editing = zone.id == self.editing_zone_id
+                duration = self.get_duration(zone.id)
                 adjustable_up = editing and any(
                     map(lambda d: d < duration, self.durations))
                 adjustable_down = editing and any(
                     map(lambda d: d > duration, self.durations))
                 return (
-                    (zone_name, duration_text, adjustable_up, adjustable_down),
-                    lambda: self.on_zone_id_selected(zone_id)
+                    (zone.name, duration_text, adjustable_up, adjustable_down),
+                    lambda: self.on_zone_id_selected(zone.id)
                 )
             items = items + [
-                build_zone_item(id) for id in config.get_zone_ids()]
+                build_zone_item(z) for z in config.get_zones()]
 
         if any(self.duration_by_zone.values()):
             items.append(('Start', lambda: self.start()))
@@ -556,11 +582,12 @@ class ServerStatusControl(UiControl):
             import server
             oled.fill(0)
             centered_text(oled, 'Server Status', 0)
-            status = 'Pending' if server.mws is None else 'Active' if server.mws.IsStarted() else 'Inactive'
-            oled.text(status, 0, 20)
             if server.init_error:
                 multi_line_text(oled, 'Error: {}'.format(
                     server.init_error), 20)
+            else:
+                status = 'Pending' if server.mws is None else 'Active' if server.mws.IsStarted() else 'Inactive'
+                oled.text(status, 0, 20)
             oled.show()
             self.ui.schedule_render(5000)
         except Exception as e:

@@ -1,10 +1,70 @@
+from collections import namedtuple
 import sys
 import json
-import utime
+import time
 
 
 def get_value(d, key, default=None):
     return d[key] if d is not None and key in d else default
+
+Zone = namedtuple('Zone', ('id', 'name', 'group'))
+
+def parse_zone(id, config):
+    name = get_value(config, 'name', default='Zone {}'.format(id + 1))
+    group = get_value(config, 'group')
+    return Zone(id, name, group)
+
+def parse_zones(config):
+    return sorted([
+        parse_zone(int(key), config[key])
+        for key in config.keys()
+    ], key=lambda z: z.id)
+
+Program = namedtuple('Program', ('id', 'name', 'zones', 'schedules'))
+ZoneDuration = namedtuple('ZoneDuration', ('id', 'duration'))
+Schedule = namedtuple('ProgramZone', (
+    'start_time',
+    'odd_days',
+    'even_days',
+    'week_days'))
+
+def parse_program(id, config):
+    name = get_value(config, 'name', default='Program {}'.format(id + 1))
+    zones = [
+        ZoneDuration(
+            get_value(z_config, 'id'),
+            get_value(z_config, 'duration'))
+            for z_config in get_value(config, 'zones', default=[])]
+    schedules = [
+        Schedule(
+            get_value(s_config, 'start_time'),
+            get_value(s_config, 'odd_days', default=True),
+            get_value(s_config, 'even_days', default=True),
+            get_value(s_config, 'week_days', default=[]))
+            for s_config in get_value(config, 'schedules', default=[])]
+    return Program(id, name, zones, schedules)
+
+def parse_programs(config):
+        return sorted([
+            parse_program(i, x)
+            for i, x in enumerate(config)
+        ], key=lambda p: p.id)
+
+Config = namedtuple('Config', ('zones', 'programs'))
+
+def parse_config(config):
+    if not config:
+        return None
+    return Config(
+        parse_zones(get_value(config, 'zones', default=[])),
+        parse_programs(get_value(config, 'programs', default={})))
+
+
+def get_item_by_id(items, id):
+    try:
+        return next((i for i in items if i.id == id))
+    except StopIteration:
+        return None
 
 
 class SprinklerConfiguration:
@@ -15,95 +75,58 @@ class SprinklerConfiguration:
     def save_last_manual_run(self, last_manual_run):
         self.last_manual_run = last_manual_run
 
-    def get_config(self):
-        if self.config is None:
+    def load_config(self, forceReload=False):
+        if forceReload or self.config is None:
             try:
+                self.config = None
                 with open('sprinkler_config.json', 'r') as f:
-                    self.config = json.loads(f.read())
+                    self.config = parse_config(json.loads(f.read()))
             except Exception as e:
                 sys.print_exception(e)
                 self.config = None
         return self.config
 
     def get_zone_num(self):
-        config = self.get_config()
-        return get_value(config, 'max_zones', default=8)
+        return 8
 
-    def get_zones_config(self):
-        config = self.get_config()
-        return get_value(config, 'zones', default={})
+    def get_zones(self):
+        return self.config.zones if self.config else []
 
-    def get_zone_ids(self):
-        zones = self.get_zones_config()
-        return sorted([int(key) for key in zones.keys()])
+    def get_zone(self, id):
+        return get_item_by_id(self.get_zones(), id)
 
-    def get_zone_config(self, zone_id):
-        zones = self.get_zones_config()
-        return get_value(zones, str(zone_id))
+    def get_programs(self):
+        return self.config.programs if self.config else []
 
-    def get_zone_name(self, zone_id):
-        zone = self.get_zone_config(zone_id)
-        return get_value(zone, 'name', default='Zone {}'.format(zone_id + 1))
+    def get_program(self, id):
+        return get_item_by_id(self.get_programs(), id)
 
-    def get_group_id_by_zone(self, zone_id):
-        zone = self.get_zone_config(zone_id)
-        return get_value(zone, 'group', default=None)
-
-    def get_programs_config(self):
-        config = self.get_config()
-        return get_value(config, 'programs', default=[])
-
-    def get_program_ids(self):
-        programs = self.get_programs_config()
-        return sorted([i for i, x in enumerate(programs)])
-
-    def get_program_config(self, program_id):
-        programs = self.get_programs_config()
-        return programs[program_id] if program_id < len(programs) else None
-
-    def get_program_name(self, program_id):
-        program = self.get_program_config(program_id)
-        return get_value(program, 'name', default='Program {}'.format(program_id))
-
-    def get_next_program_start(self, program_id, since_secs):
-        program = self.get_program_config(program_id)
-        schedules = get_value(program, 'schedules', [])
-        if not any(schedules):
+    def get_next_program_start(self, program, since_secs):
+        if not program or not any(program.schedules):
             return None
-        schedules = sorted(schedules, key=lambda s: s['start_time'])
-        y, mo, d, h, mi, s, wd, yd = utime.localtime(since_secs)
-        day_start_secs = utime.mktime((y, mo, d, 0, 0, 0, 0, 0))
+        y, mo, d, h, mi, s, wd, *z = time.localtime(since_secs)
+        day_start_secs = time.mktime((y, mo, d, 0, 0, 0, 0, 0))
         day = 0
         while day < 7:
-            for s in schedules:
-                start_time = s['start_time']
-                start_time_h = round(start_time / 100)
-                start_time_m = start_time % 100
+            for s in sorted(program.schedules, key=lambda s: s.start_time):
+                start_time_h = round(s.start_time / 100)
+                start_time_m = s.start_time % 100
                 start_secs = day_start_secs + \
                     (start_time_h * 60 + start_time_m) * 60
                 if start_secs <= since_secs:
                     continue
                 is_even = (d % 2) == 0
-                if is_even and 'even_days' in s and not s['even_days']:
+                if is_even and not s.even_days:
                     continue
-                if not is_even and 'odd_days' in s and not s['odd_days']:
+                if not is_even and not s.odd_days:
                     continue
-                if 'week_days' in s and any(s['week_days']) and wd not in s['week_days']:
+                if any(s.week_days) and wd not in s.week_days:
                     continue
                 return start_secs
             day += 1
             day_start_secs = day_start_secs + 24 * 60 * 60
-            y, mo, d, h, mi, s, wd, yd = utime.localtime(day_start_secs)
+            y, mo, d, h, mi, s, wd, yd = time.localtime(day_start_secs)
         return None
-
-    def get_program_zones(self, program_id):
-        """Returns { zone_id: duration }"""
-        program = self.get_program_config(program_id)
-        zones = get_value(program, 'zones', default={})
-        res = {}
-        for zone in zones:
-            res[int(zone['id'])] = zone['duration']
-        return res
 
 
 instance = None
@@ -112,4 +135,5 @@ instance = None
 def setup():
     global instance
     instance = SprinklerConfiguration()
+    instance.load_config()
     return instance
