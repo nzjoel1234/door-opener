@@ -3,6 +3,7 @@ from mqtt_as import MQTTClient, config as default_config
 from workScheduler import WorkScheduler
 
 
+scheduler = WorkScheduler()
 client = None
 status = 'n/a'
 
@@ -43,14 +44,11 @@ async def try_start():
         await client.connect()
         await client.subscribe('123', qos=1)
         await client.subscribe('456', qos=1)
+        scheduler.schedule_work()
         status = 'Active'
     except Exception as e:
         sys.print_exception(e)
         status = repr(e)
-
-
-scheduler = WorkScheduler()
-scheduler.schedule_work()
 
 
 async def do_tasks():
@@ -58,7 +56,7 @@ async def do_tasks():
         return
     try:
         print('publish')
-        await client.publish('test', 'hi from esp32', qos = 1)
+        await client.publish('test', 'hi from esp32', qos=1)
         print('publish done')
     except Exception as e:
         sys.print_exception(e)
