@@ -1,12 +1,17 @@
 import os
+import mpy_cross  # pip install mpy-cross
 
 port = 'COM5'
-fw = 'esp32-20190529-v1.11.bin'
+fw = 'esp32-idf3-20191220-v1.12.bin'
 
 files = ['www',
-         'ds3231_port.py',
+         'uasyncio',
+         'ds3231_port.mpy',
+         'microWebSrv.mpy',
+         'mqqt_as.mpy',
+         'ssd1306.mpy',
+         'mqqt_client.py',
          'workScheduler.py',
-         'microWebSrv.py',
          'rotary.py',
          'rtc_time.py',
          'scheduler.py',
@@ -14,7 +19,7 @@ files = ['www',
          'shiftR.py',
          'sprinklerConfiguration.py',
          'sprinkler_config.json',
-         'ssd1306.py',
+         'mqtt.json',
          'ui.py',
          'wifiConnect.py',
          # put boot last - don't want board to try boot with files missing
@@ -40,6 +45,9 @@ exec_cmd('esptool.py --chip esp32 --port {} --baud 460800 write_flash -z 0x1000 
 
 print_with_header('Write Application Files')
 for f in files:
+    if f.endswith('.mpy'):
+        print('*** Precompiling: {}'.format(f))
+        mpy_cross.run(f.replace('.mpy', '.py'))
     exec_cmd('ampy --port {} put "{}"'.format(port, f))
 
 print_with_header('Done')
