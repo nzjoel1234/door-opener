@@ -6,7 +6,7 @@ import utime
 import sys
 
 
-class Scheduler:
+class ZoneScheduler:
 
     def __init__(self, config: SprinklerConfiguration, shiftR: ShiftR):
         self.last_schedule_check = utime.time()
@@ -17,6 +17,14 @@ class Scheduler:
         self.queue_lock = allocate_lock()
         self.workScheduler = WorkScheduler()
         self.workScheduler.schedule_work()
+        self.on_change_handler = lambda: self.workScheduler.schedule_work()
+        self.config.add_on_change_handler(
+            self.on_change_handler)
+
+    def __del__(self):
+        if self.config and self.on_change_handler:
+            self.config.remove_on_change_handler(
+                self.on_change_handler)
 
     def is_active(self):
         with self.queue_lock:
@@ -156,14 +164,4 @@ class Scheduler:
             for program in self.config.get_programs()
         ] for item in sublist], key=lambda i: i[0])
 
-
         [item for sublist in l for item in sublist]
-
-
-instance = None
-
-
-def setup(config: SprinklerConfiguration, shiftR: ShiftR):
-    global instance
-    instance = Scheduler(config, shiftR)
-    return instance

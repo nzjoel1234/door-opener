@@ -4,26 +4,31 @@ import mpy_cross  # pip install mpy-cross
 port = 'COM5'
 fw = 'esp32-idf3-20191220-v1.12.bin'
 
-files = ['www',
-         'uasyncio',
-         'ds3231_port.mpy',
-         'microWebSrv.mpy',
-         'mqqt_as.mpy',
-         'ssd1306.mpy',
-         'mqqt_client.py',
-         'workScheduler.py',
-         'rotary.py',
-         'rtc_time.py',
-         'scheduler.py',
-         'server.py',
-         'shiftR.py',
-         'sprinklerConfiguration.py',
-         'sprinkler_config.json',
-         'mqtt.json',
-         'ui.py',
-         'wifiConnect.py',
-         # put boot last - don't want board to try boot with files missing
-         'boot.py']
+files = [
+    './www',
+    './aws',
+    './uasyncio',
+    './sprinkler_config.json',
+    './network.json',
+    './mqtt.json',
+    './awsClient.py',
+    './ds3231_port.py',
+    './microWebSrv.py',
+    # './mqtt_as.py',
+    './ssd1306.py',
+    # './mqtt_client.py',
+    './workScheduler.py',
+    './rotary.py',
+    './rtc_time.py',
+    './scheduler.py',
+    './server.py',
+    './shiftR.py',
+    './sprinklerConfiguration.py',
+    './ui.py',
+    './wifiConnect.py',
+    # put boot last - don't want board to try boot with files missing
+    'boot.py'
+]
 
 
 def print_with_header(text):
@@ -45,9 +50,17 @@ exec_cmd('esptool.py --chip esp32 --port {} --baud 460800 write_flash -z 0x1000 
 
 print_with_header('Write Application Files')
 for f in files:
-    if f.endswith('.mpy'):
+    if f != 'boot.py' and f.endswith('.py'):
         print('*** Precompiling: {}'.format(f))
-        mpy_cross.run(f.replace('.mpy', '.py'))
-    exec_cmd('ampy --port {} put "{}"'.format(port, f))
+        mpy_return_code = mpy_cross.run(f).wait(2000)
+        if mpy_return_code != 0:
+            print('!!! Unexpected return code: {}'.format(mpy_return_code))
+        f = f.replace('.py', '.mpy')
+    if not os.path.exists(f):
+        print('!!! path does not exist: {}'.format(f))
+    else:
+        exec_cmd('ampy --port {} put "{}"'.format(port, f))
+    if f.endswith('.mpy'):
+        os.remove(f)
 
 print_with_header('Done')

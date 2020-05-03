@@ -7,18 +7,22 @@ import time
 def get_value(d, key, default=None):
     return d[key] if d is not None and key in d else default
 
+
 Zone = namedtuple('Zone', ('id', 'name', 'group'))
+
 
 def parse_zone(id, config):
     name = get_value(config, 'name', default='Zone {}'.format(id + 1))
     group = get_value(config, 'group')
     return Zone(id, name, group)
 
+
 def parse_zones(config):
     return sorted([
         parse_zone(int(key), config[key])
         for key in config.keys()
     ], key=lambda z: z.id)
+
 
 Program = namedtuple('Program', ('id', 'name', 'zones', 'schedules'))
 ZoneDuration = namedtuple('ZoneDuration', ('id', 'duration'))
@@ -28,29 +32,33 @@ Schedule = namedtuple('ProgramZone', (
     'even_days',
     'week_days'))
 
+
 def parse_program(id, config):
     name = get_value(config, 'name', default='Program {}'.format(id + 1))
     zones = [
         ZoneDuration(
             get_value(z_config, 'id'),
             get_value(z_config, 'duration'))
-            for z_config in get_value(config, 'zones', default=[])]
+        for z_config in get_value(config, 'zones', default=[])]
     schedules = [
         Schedule(
             get_value(s_config, 'start_time'),
             get_value(s_config, 'odd_days', default=True),
             get_value(s_config, 'even_days', default=True),
             get_value(s_config, 'week_days', default=[]))
-            for s_config in get_value(config, 'schedules', default=[])]
+        for s_config in get_value(config, 'schedules', default=[])]
     return Program(id, name, zones, schedules)
 
+
 def parse_programs(config):
-        return sorted([
-            parse_program(i, x)
-            for i, x in enumerate(config)
-        ], key=lambda p: p.id)
+    return sorted([
+        parse_program(i, x)
+        for i, x in enumerate(config)
+    ], key=lambda p: p.id)
+
 
 Config = namedtuple('Config', ('zones', 'programs'))
+
 
 def parse_config(config):
     if not config:
@@ -72,19 +80,47 @@ class SprinklerConfiguration:
     config = None
     last_manual_run = {}
 
+    on_change_handlers = []
+
+    def add_on_change_handler(self, handler):
+        self.on_change_handlers.append(handler)
+
+    def remove_on_change_handler(self, handler):
+        self.on_change_handlers.remove(handler)
+
+    def raise_on_change(self):
+        for handler in self.on_change_handlers:
+            try:
+                handler()
+            except Exception as e:
+                sys.print_exception(e)
+
     def save_last_manual_run(self, last_manual_run):
         self.last_manual_run = last_manual_run
 
+    def save_config(self, config):
+        with open('sprinkler_config.json', 'w+') as f:
+            f.write(json.dumps(config))
+        self.load_config(forceReload=True)
+
+    def get_config(self):
+        try:
+            with open('sprinkler_config.json', 'r') as f:
+                return json.loads(f.read())
+        except Exception as e:
+            sys.print_exception(e)
+        return None
+
     def load_config(self, forceReload=False):
-        if forceReload or self.config is None:
-            try:
-                self.config = None
-                with open('sprinkler_config.json', 'r') as f:
-                    self.config = parse_config(json.loads(f.read()))
-            except Exception as e:
-                sys.print_exception(e)
-                self.config = None
-        return self.config
+        if not forceReload and self.config is not None:
+            return
+        try:
+            self.config = parse_config(self.get_config())
+        except Exception as e:
+            self.config = None
+            sys.print_exception(e)
+        finally:
+            self.raise_on_change()
 
     def get_zone_num(self):
         return 8
@@ -127,13 +163,3 @@ class SprinklerConfiguration:
             day_start_secs = day_start_secs + 24 * 60 * 60
             y, mo, d, h, mi, s, wd, yd = time.localtime(day_start_secs)
         return None
-
-
-instance = None
-
-
-def setup():
-    global instance
-    instance = SprinklerConfiguration()
-    instance.load_config()
-    return instance

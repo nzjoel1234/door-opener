@@ -1,3 +1,4 @@
+import ssd1306
 import sys
 import network
 import webrepl
@@ -28,12 +29,14 @@ if rotary_sw_pin.value() == 1 or safeModeDetectPin.value() == 0:
     print('*****')
     sys.exit()
 
-def mem(label = 'mem'):
+
+def mem(label='mem'):
     print('--------------')
     print(label)
     import gc
     gc.collect()
     micropython.mem_info()
+
 
 webrepl.start(password='admin')
 
@@ -45,30 +48,34 @@ def setup_ap():
               authmode=network.AUTH_WPA_WPA2_PSK,
               password="esprinkler")
 
-mqtt_client = None
+
+aws_client = None
+zone_scheduler = None
+ui_manager = None
+
 
 def setup():
     loadingControl = None
     try:
         i2c = machine.I2C(-1, machine.Pin(22), machine.Pin(21))
+        oled = ssd1306.SSD1306_I2C(128, 64, i2c)
+
+        global ui_manager, zone_scheduler, aws_client
 
         import ui
-        ui_man = ui.setup(i2c)
-        loadingControl = ui.LoadingControl(ui_man)
-        ui_man.goto(loadingControl)
+        ui_manager = ui.UiManager(oled)
+        loadingControl = ui.LoadingControl(ui_manager)
+        ui_manager.goto(loadingControl)
 
-        loadingControl.set_status("server")
-        import server
-        # For some reason starting server on main thread makes first server request VERY slow (>20secs)
-        server.enable_server()
+        loadingControl.set_status("config")
+        from sprinklerConfiguration import SprinklerConfiguration
+        configurator = SprinklerConfiguration()
+        configurator.load_config()
+        ui_manager.configurator = configurator
 
         loadingControl.set_status("rtc")
         import rtc_time
         rtc_time.setup(i2c)
-
-        loadingControl.set_status("config")
-        from sprinklerConfiguration import setup as SetupConfig
-        sprinklerConfiguration = SetupConfig()
 
         loadingControl.set_status("shiftr")
         from shiftR import ShiftR
@@ -76,27 +83,38 @@ def setup():
                         machine.Pin(14, machine.Pin.OUT),
                         machine.Pin(13, machine.Pin.OUT),
                         machine.Pin(27, machine.Pin.OUT),
-                        sprinklerConfiguration.get_zone_num())
+                        configurator.get_zone_num())
         shiftR.setup()
 
         loadingControl.set_status("scheduler")
-        from scheduler import setup as setupScheduler
-        setupScheduler(sprinklerConfiguration, shiftR)
+        from scheduler import Scheduler
+        zone_scheduler = Scheduler(configurator, shiftR)
+        ui_manager.zone_scheduler = zone_scheduler
+
+        loadingControl.set_status("server")
+        import server
+        server.enable_server(configurator, zone_scheduler)
 
         loadingControl.set_status("rotary")
         from rotary import Rotary
-        rotary = Rotary(ui_man)
+        rotary = Rotary(ui_manager)
         rotary.setup(rotary_sw_pin, rotary_cl_pin, rotary_dt_pin)
 
         loadingControl.set_status("ap")
         setup_ap()
 
-        # loadingControl.set_status("wifi")
-        # import wifiConnect
-        # wifiConnect.try_connect()
+        loadingControl.set_status("wifi")
+        import wifiConnect
+        wifiConnect.try_connect()
+
+        loadingControl.set_status("aws")
+        from awsClient import AwsClient
+        temp_aws_client = AwsClient(configurator, zone_scheduler)
+        temp_aws_client.setup()
+        aws_client = temp_aws_client
 
         loadingControl.set_status("display")
-        ui_man.goto(ui.DashboardControl(ui_man))
+        ui_manager.goto(ui.DashboardControl(ui_manager))
 
     except Exception as e:
         if loadingControl:
@@ -108,27 +126,22 @@ def setup():
 async def main():
     while True:
         try:
-            from ui import instance as ui_manager
+            global aws_client, zone_scheduler, ui_manager
+
             if ui_manager:
                 ui_manager.do_tasks()
 
-            from scheduler import instance as schedule_manager
-            if schedule_manager:
-                schedule_manager.do_tasks()
-                
-            import mqtt_client as mqtt
-            await mqtt.do_tasks()
+            if zone_scheduler:
+                zone_scheduler.do_tasks()
+
+            if aws_client:
+                aws_client.do_tasks()
 
         except Exception as e:
             sys.print_exception(e)
         await asyncio.sleep_ms(100)
 
-async def setup_mqtt():
-    import mqtt_client
-    await mqtt_client.try_start()
-
 _thread.start_new_thread(setup, ())
 
 loop = asyncio.get_event_loop()
-loop.create_task(setup_mqtt())
 loop.run_until_complete(main())
