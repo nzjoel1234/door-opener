@@ -1,21 +1,21 @@
 {
-    "zones": {
-        "0": {
+    "zones": [
+        {
             "name": "Lawn 0",
             "group": "lawn"
         },
-        "1": {
+        {
             "name": "Lawn 1",
             "group": "lawn"
         },
-        "2": {
+        {
             "name": "Lawn 2",
             "group": "lawn"
         },
-        "3": {
+        {
             "name": "Test"
         }
-    },
+    ],
     "programs": [
         {
             "name": "Lawns",

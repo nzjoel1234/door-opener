@@ -6,4 +6,4 @@ SprinklerPCB/fp-info-cache
 *.kicad_pcb-bak
 *.mpy
 *.mine.json
-aws
+aws/*

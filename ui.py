@@ -6,6 +6,11 @@ import framebuf
 import _thread
 import math
 from workScheduler import WorkScheduler
+import urandom
+
+
+SCREEN_W = 128
+SCREEN_H = 64
 
 
 def draw_small_up_arrow(oled, x, y, c):
@@ -19,13 +24,15 @@ def draw_small_down_arrow(oled, x, y, c):
 
 
 def draw_prev_arrow(oled, y):
+    global SCREEN_W
     for i in range(0, 5):
-        oled.hline(63 - i, y + i + 1, (i + 1) * 2, 1)
+        oled.hline(int(SCREEN_W / 2) - 1 - i, y + i + 1, (i + 1) * 2, 1)
 
 
 def draw_next_arrow(oled):
+    global SCREEN_W, SCREEN_H
     for i in range(0, 5):
-        oled.hline(63 - i, 63 - i, (i + 1) * 2, 1)
+        oled.hline(int(SCREEN_W / 2) - 1 - i, SCREEN_H - 1 - i, (i + 1) * 2, 1)
 
 
 def multi_line_text(oled, text, y):
@@ -36,7 +43,8 @@ def multi_line_text(oled, text, y):
 
 
 def centered_text(oled, text, y):
-    oled.text(text, 64 - (len(text) * 4), y)
+    global SCREEN_W
+    oled.text(text, int(SCREEN_W / 2) - (len(text) * 4), y)
 
 
 def text_right(oled, text, x, y):
@@ -46,6 +54,16 @@ def text_right(oled, text, x, y):
 def move_index(delta, index, items):
     nex_index = index + delta
     return min(len(items) - 1, nex_index) if delta > 0 else max(0, nex_index)
+
+
+def get_duration_text(duration, is_editing=False):
+    if duration == 0 and not is_editing:
+        return ''
+    units = 's' if duration <= 90 else \
+        'm' if duration <= (90 * 60) else 'h'
+    value = duration if duration <= 90 else \
+        duration // 60 if duration <= (90 * 60) else duration // (60 * 60)
+    return 'off' if duration == 0 else '{}{}'.format(value, units)
 
 
 class NoInterrupts:
@@ -69,6 +87,7 @@ class UiManager:
         self.oled = oled
         self.current_control = None
         self.scheduler = WorkScheduler()
+        self.screen_saver_scheduler = WorkScheduler()
         self.goto(LoadingControl(self))
         self.lock = _thread.allocate_lock()
         self.events = [None] * 10
@@ -92,6 +111,7 @@ class UiManager:
 
             with NoInterrupts() as lock:
                 for i in range(self.event_count):
+                    self.screen_saver_scheduler.schedule_work(60 * 1000)
                     event = self.events[i]
                     if event == EVENT_UP:
                         self.current_control.on_up()
@@ -101,10 +121,13 @@ class UiManager:
                         self.current_control.on_select()
                 self.event_count = 0
 
-            if not self.scheduler.work_pending():
-                return
-            self.render_scheduled = False
-            self.current_control.render(self.oled)
+            if self.screen_saver_scheduler.work_pending() and \
+                    not isinstance(self.current_control, ScreenSaverControl):
+                self.goto(ScreenSaverControl(self))
+
+            if self.scheduler.work_pending():
+                self.current_control.render(self.oled)
+
         except Exception as e:
             sys.print_exception(e)
             self.scheduler.schedule_work(2000)  # Try render again in 2 seconds
@@ -168,6 +191,51 @@ class LoadingControl(UiControl):
         oled.show()
 
 
+class ScreenSaverControl(UiControl):
+
+    def __init__(self, ui):
+        super().__init__(ui)
+        self.drips = []
+
+    def on_interact(self):
+        self.ui.goto(DashboardControl(self.ui))
+
+    def on_up(self):
+        self.on_interact()
+
+    def on_down(self):
+        self.on_interact()
+
+    def on_select(self):
+        self.on_interact()
+
+    def render(self, oled):
+        global SCREEN_H, SCREEN_W
+        oled.fill(0)
+        new_drip = True
+        new_drips = []
+        for drip in self.drips:
+            x = drip[0]
+            dy = drip[2]
+            y = drip[1] + dy
+            if y < 5:
+                new_drip = False
+            if y >= 1:
+                oled.vline(x - 1, max(0, y - 2), min(2, y), 1)
+                oled.vline(x + 1, max(0, y - 2), min(2, y), 1)
+            oled.vline(x, max(0, y - 4), min(5, y + 1), 1)
+            if y <= SCREEN_H:
+                new_drips.append((x, y, dy))
+        oled.show()
+        if new_drip:
+            x = urandom.randrange(SCREEN_W)
+            y = 0
+            dy = urandom.randrange(1, 7)
+            new_drips.append((x, y, dy))
+        self.drips = new_drips
+        self.ui.schedule_render(50)
+
+
 week_day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 
@@ -212,12 +280,12 @@ class DashboardControl(UiControl):
         rssi = DashboardControl.get_rssi()
         sig_strength = DashboardControl.rssi_to_sig_strength(rssi)
 
-        screen_w = 128
+        global SCREEN_W
         max_bar_height = 7
         bar_width = 4
         bar_space = 1
         num_bars = 3
-        first_bar_x = screen_w - num_bars * (bar_width + bar_space)
+        first_bar_x = SCREEN_W - num_bars * (bar_width + bar_space)
 
         bars = map(lambda i: {
             'fill': sig_strength > i,
@@ -282,6 +350,8 @@ class MenuControl(UiControl):
         if has_more_after:
             draw_next_arrow(oled)
 
+        global SCREEN_W
+
         for page_line in range(0, min(num_lines, len(self.items))):
             item_index = first_line + page_line
             item_label = self.items[item_index][0]
@@ -289,7 +359,7 @@ class MenuControl(UiControl):
             line_y = first_line_y + page_line * 10
             if item_index == index:
                 text_color = 0
-                oled.fill_rect(0, line_y - 1, 128, 10, 1)
+                oled.fill_rect(0, line_y - 1, SCREEN_W, 10, 1)
 
             is_str = isinstance(item_label, str)
             text = item_label if is_str else item_label[0]
@@ -409,76 +479,82 @@ class ManualRunControl(MenuControl):
         super().__init__(ui, 'Manual Run', [])
         self.get_root = get_root
         self.duration_by_zone = self.ui.configurator.last_manual_run if self.ui.configurator else {}
-        self.durations = [0, 1, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
+        self.durations = [
+            0,
+            5,
+            1 * 60,
+            5 * 60,
+            10 * 60,
+            15 * 60,
+            20 * 60,
+            30 * 60,
+            45 * 60,
+            60 * 60,
+            90 * 60,
+            2 * 60 * 60,
+            3 * 60 * 60,
+        ]
         self.editing_zone_id = None
-        self.default_duration = 30
+        self.default_duration = 30 * 60
+        self.editing_duration = self.default_duration
         self.update_items()
 
-    def get_duration(self, zone_id):
-        return self.duration_by_zone[zone_id] if zone_id in self.duration_by_zone else 0
-
-    def get_duration_text(self, zone_id):
-        is_editing = zone_id == self.editing_zone_id
-        duration = self.get_duration(zone_id)
-        if duration == 0 and not is_editing:
-            return ''
-        has_prev = any(map(lambda d: d < duration, self.durations))
-        has_more = any(map(lambda d: d > duration, self.durations))
-        units = 'm' if duration <= 90 else 'h'
-        value = duration if duration <= 90 else duration // 60
-        return 'off' if duration == 0 else '{}{}'.format(value, units)
+    def get_duration(self, zone_id, default=0):
+        if zone_id in self.duration_by_zone:
+            self.duration_by_zone[zone_id]
+        return self.duration_by_zone[zone_id] if zone_id in self.duration_by_zone else default
 
     def on_zone_id_selected(self, zone_id):
-        duration = self.get_duration(zone_id)
-        if self.editing_zone_id is None:
-            self.duration_by_zone[zone_id] = duration if duration > 0 else self.default_duration
-            self.editing_zone_id = zone_id
-        else:
-            if duration > 0:
-                self.default_duration = duration
-            self.editing_zone_id = None
+        if self.editing_zone_id is not None:
+            if self.editing_duration == 0:
+                del self.duration_by_zone[self.editing_zone_id]
+            else:
+                self.default_duration = self.editing_duration
+                self.duration_by_zone[self.editing_zone_id] = self.editing_duration
+        self.editing_zone_id = zone_id if self.editing_zone_id != zone_id else None
+        if self.editing_zone_id is not None:
+            self.editing_duration = self.get_duration(
+                self.editing_zone_id, self.default_duration)
         self.update_items()
 
     def on_up(self):
         if self.editing_zone_id is None:
             super().on_up()
             return
-        duration = self.get_duration(self.editing_zone_id)
-        next_durations = list(filter(lambda d: d < duration, self.durations))
+        next_durations = list(
+            filter(lambda d: d < self.editing_duration, self.durations))
         if len(next_durations) == 0:
             return
-        self.duration_by_zone[self.editing_zone_id] = next_durations[-1]
+        self.editing_duration = next_durations[-1]
         self.update_items()
 
     def on_down(self):
         if self.editing_zone_id is None:
             super().on_down()
             return
-        duration = self.get_duration(self.editing_zone_id)
-        prev_durations = list(filter(lambda d: d > duration, self.durations))
+        prev_durations = list(
+            filter(lambda d: d > self.editing_duration, self.durations))
         if len(prev_durations) == 0:
             return
-        self.duration_by_zone[self.editing_zone_id] = prev_durations[0]
+        self.editing_duration = prev_durations[0]
         self.update_items()
 
     def start(self):
-        if not self.ui.zone_scheduler or not self.ui.config:
+        if not self.ui.zone_scheduler or not self.ui.configurator:
             return
-        self.ui.config.save_last_manual_run(self.duration_by_zone)
-        self.ui.zone_scheduler.queue_zones({
-            k: v * 60 for k, v in self.duration_by_zone.items()})
+        self.ui.zone_scheduler.queue_zones(self.duration_by_zone)
         self.ui.goto(DashboardControl(self.ui))
 
     def update_items(self):
         items = [
             ('Back', lambda: self.ui.goto(self.get_root())),
         ]
-
         if self.ui.configurator:
             def build_zone_item(zone):
-                duration_text = self.get_duration_text(zone.id)
                 editing = zone.id == self.editing_zone_id
-                duration = self.get_duration(zone.id)
+                duration = self.editing_duration if editing else \
+                    self.get_duration(zone.id)
+                duration_text = get_duration_text(duration, editing)
                 adjustable_up = editing and any(
                     map(lambda d: d < duration, self.durations))
                 adjustable_down = editing and any(

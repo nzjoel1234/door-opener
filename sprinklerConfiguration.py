@@ -2,6 +2,7 @@ from collections import namedtuple
 import sys
 import json
 import time
+from event import Event
 
 
 def get_value(d, key, default=None):
@@ -15,13 +16,6 @@ def parse_zone(id, config):
     name = get_value(config, 'name', default='Zone {}'.format(id + 1))
     group = get_value(config, 'group')
     return Zone(id, name, group)
-
-
-def parse_zones(config):
-    return sorted([
-        parse_zone(int(key), config[key])
-        for key in config.keys()
-    ], key=lambda z: z.id)
 
 
 Program = namedtuple('Program', ('id', 'name', 'zones', 'schedules'))
@@ -50,22 +44,7 @@ def parse_program(id, config):
     return Program(id, name, zones, schedules)
 
 
-def parse_programs(config):
-    return sorted([
-        parse_program(i, x)
-        for i, x in enumerate(config)
-    ], key=lambda p: p.id)
-
-
 Config = namedtuple('Config', ('zones', 'programs'))
-
-
-def parse_config(config):
-    if not config:
-        return None
-    return Config(
-        parse_zones(get_value(config, 'zones', default=[])),
-        parse_programs(get_value(config, 'programs', default={})))
 
 
 def get_item_by_id(items, id):
@@ -79,14 +58,7 @@ class SprinklerConfiguration:
 
     config = None
     last_manual_run = {}
-
-    on_change_handlers = []
-
-    def add_on_change_handler(self, handler):
-        self.on_change_handlers.append(handler)
-
-    def remove_on_change_handler(self, handler):
-        self.on_change_handlers.remove(handler)
+    on_change_event = Event()
 
     def raise_on_change(self):
         for handler in self.on_change_handlers:
@@ -95,15 +67,12 @@ class SprinklerConfiguration:
             except Exception as e:
                 sys.print_exception(e)
 
-    def save_last_manual_run(self, last_manual_run):
-        self.last_manual_run = last_manual_run
-
     def save_config(self, config):
         with open('sprinkler_config.json', 'w+') as f:
             f.write(json.dumps(config))
         self.load_config(forceReload=True)
 
-    def get_config(self):
+    def read_config(self):
         try:
             with open('sprinkler_config.json', 'r') as f:
                 return json.loads(f.read())
@@ -115,12 +84,29 @@ class SprinklerConfiguration:
         if not forceReload and self.config is not None:
             return
         try:
-            self.config = parse_config(self.get_config())
+            raw_config = self.read_config()
+            if raw_config is None:
+                return
+
+            raw_zones = get_value(raw_config, 'zones', default=[])
+            zones = sorted([
+                parse_zone(i, x)
+                for i, x in enumerate(raw_zones)
+            ], key=lambda z: z.id)
+
+            raw_programs = get_value(raw_config, 'programs', default=[])
+            programs = sorted([
+                parse_program(i, x)
+                for i, x in enumerate(raw_programs)
+            ], key=lambda p: p.id)
+
+            self.config = Config(zones, programs)
+
         except Exception as e:
             self.config = None
             sys.print_exception(e)
         finally:
-            self.raise_on_change()
+            self.on_change_event.raise_event()
 
     def get_zone_num(self):
         return 8

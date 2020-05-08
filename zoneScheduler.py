@@ -4,6 +4,27 @@ from _thread import allocate_lock
 from shiftR import ShiftR
 import utime
 import sys
+from event import Event
+
+
+class ZoneQueue:
+
+    def __init__(self, active=[], pending=[]):
+        self.active = active
+        self.pending = pending
+
+    def is_empty(self):
+        return len(self.active) + len(self.pending) == 0
+
+    def concat(self, new_items):
+        return ZoneQueue(self.active, self.pending + new_items)
+
+    def serialise(self):
+        import json
+        return json.dumps({
+            'active': self.active,
+            'pending': self.pending,
+        })
 
 
 class ZoneScheduler:
@@ -12,29 +33,27 @@ class ZoneScheduler:
         self.last_schedule_check = utime.time()
         self.config = config
         self.shiftR = shiftR
-        self.pending_queue = []  # List[Tuple[Zone_id, Duration_Secs]]
-        self.active_queue = []  # List[Tuple[Zone_id, End_Time_Secs]]
+        self.queue = ZoneQueue()
         self.queue_lock = allocate_lock()
         self.workScheduler = WorkScheduler()
         self.workScheduler.schedule_work()
         self.on_change_handler = lambda: self.workScheduler.schedule_work()
-        self.config.add_on_change_handler(
+        self.config.on_change_event.add_handler(
             self.on_change_handler)
+        self.queue_changed_event = Event()
 
     def __del__(self):
         if self.config and self.on_change_handler:
-            self.config.remove_on_change_handler(
+            self.config.on_change_event.remove_handler(
                 self.on_change_handler)
 
     def is_active(self):
-        with self.queue_lock:
-            return len(self.active_queue) > 0 or len(self.pending_queue) > 0
+        return not self.queue.is_empty()
 
     def stop_all(self):
         with self.queue_lock:
-            self.pending_queue = []
-            self.active_queue = []
-            self.workScheduler.schedule_work()
+            self.queue = ZoneQueue()
+        self.workScheduler.schedule_work()
 
     def do_tasks(self):
         if not self.workScheduler.work_pending():
@@ -54,43 +73,45 @@ class ZoneScheduler:
 
                 self.last_schedule_check = now
 
-            # remove items which have completed
-            self.active_queue = list(filter(
-                lambda z: z[1] > now,
-                self.active_queue))
-
-            active_groups = [
-                z.group
-                for z in [
-                    self.config.get_zone(i[0])
-                    for i in self.active_queue
-                ]
-                if z.group is not None
-            ]
-
             with self.queue_lock:
+                # remove items which have completed
+                new_active_queue = list(filter(
+                    lambda z: z[1] > now,
+                    self.queue.active))
+
+                active_groups = [
+                    z.group
+                    for z in [
+                        self.config.get_zone(i[0])
+                        for i in new_active_queue
+                    ]
+                    if z.group is not None
+                ]
+
                 new_pending_queue = []
-                for pending in self.pending_queue:
+                for pending in self.queue.pending:
                     zone_id, duration_s = pending
                     zone = self.config.get_zone(zone_id)
                     if not zone or duration_s <= 0:
                         continue
-                    if zone.group in active_groups or any([z for z in self.active_queue if z[0] == zone.id]):
+                    if zone.group in active_groups or any([z for z in new_active_queue if z[0] == zone.id]):
                         new_pending_queue.append(pending)
                         continue
                     if zone.group is not None:
                         active_groups.append(zone.group)
-                    self.active_queue.append((zone_id, now + 1 + duration_s))
-                self.pending_queue = new_pending_queue
+                    new_active_queue.append((zone_id, now + 1 + duration_s))
 
-            self.shiftR.set_enabled(True)
-            self.shiftR.set_enabled_outputs(list(map(
-                lambda z: z[0],
-                self.active_queue)))
+                self.queue = ZoneQueue(new_active_queue, new_pending_queue)
+                self.queue_changed_event.raise_event(self.queue)
 
-            next_expiry = None
-            if len(self.active_queue):
-                next_expiry = min(map(lambda z: z[1], self.active_queue))
+                self.shiftR.set_enabled(True)
+                self.shiftR.set_enabled_outputs(list(map(
+                    lambda z: z[0],
+                    self.queue.active)))
+
+                next_expiry = None
+                if len(self.queue.active):
+                    next_expiry = min(map(lambda z: z[1], self.queue.active))
 
             next_start = self.get_next_start_time(now)
 
@@ -116,8 +137,7 @@ class ZoneScheduler:
 
     def queue_zones(self, duration_by_zone):
         with self.queue_lock:
-            for item in duration_by_zone.items():
-                self.pending_queue.append(item)
+            self.queue = self.queue.concat(list(duration_by_zone.items()))
         self.workScheduler.schedule_work()
 
     def queue_zone(self, zone_id, duration_s):

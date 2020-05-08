@@ -6,7 +6,6 @@ import machine
 import micropython
 import _thread
 import utime
-import uasyncio as asyncio
 
 micropython.alloc_emergency_exception_buf(100)
 
@@ -87,8 +86,10 @@ def setup():
         shiftR.setup()
 
         loadingControl.set_status("scheduler")
-        from scheduler import Scheduler
-        zone_scheduler = Scheduler(configurator, shiftR)
+        from zoneScheduler import ZoneScheduler
+        zone_scheduler = ZoneScheduler(configurator, shiftR)
+        zone_scheduler.queue_changed_event.add_handler(
+            lambda q: print(q.serialise()))
         ui_manager.zone_scheduler = zone_scheduler
 
         loadingControl.set_status("server")
@@ -123,13 +124,22 @@ def setup():
         raise
 
 
-async def main():
+def ui_loop():
     while True:
         try:
-            global aws_client, zone_scheduler, ui_manager
-
+            global ui_manager
             if ui_manager:
                 ui_manager.do_tasks()
+
+        except Exception as e:
+            sys.print_exception(e)
+        utime.sleep_ms(100)
+
+
+def background_loop():
+    while True:
+        try:
+            global aws_client, zone_scheduler
 
             if zone_scheduler:
                 zone_scheduler.do_tasks()
@@ -139,9 +149,9 @@ async def main():
 
         except Exception as e:
             sys.print_exception(e)
-        await asyncio.sleep_ms(100)
+        utime.sleep_ms(100)
+
 
 _thread.start_new_thread(setup, ())
-
-loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
+_thread.start_new_thread(ui_loop, ())
+_thread.start_new_thread(background_loop, ())

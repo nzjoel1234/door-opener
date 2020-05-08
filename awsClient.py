@@ -29,8 +29,8 @@ class AwsClient:
         except Exception as e:
             sys.print_exception(e)
 
-    def get_queue_program_topic(self):
-        return 'sprinkler/{}/queue_program'.format(self.client_id)
+    def get_queue_zones_topic(self):
+        return 'sprinkler/{}/queue_zones'.format(self.client_id)
 
     def get_desired_config_received_topic(self):
         return 'sprinkler/{}/config/desired'.format(self.client_id)
@@ -40,10 +40,10 @@ class AwsClient:
 
     def sub_cb(self, topic, message):
         try:
-            print((topic, message))
-            if topic == self.get_queue_program_topic() and message.isdigit():
-                print('queuing p{}'.format(message))
-                self.zone_scheduler.queue_program(int(message))
+            print('MQTT Message: {}'.format((topic, message)))
+            if topic == self.get_queue_zones_topic() and message.isdigit():
+                duration_by_zone = json.loads(message)
+                self.zone_scheduler.queue_zones(duration_by_zone)
 
             if topic == self.get_desired_config_received_topic():
                 shadow = json.loads(message)
@@ -54,10 +54,10 @@ class AwsClient:
             sys.print_exception(e)
 
     def report_config(self):
-        config = self.configurator.get_config()
+        raw_config = self.configurator.read_config()
         self.client.publish(
             bytes(self.get_report_config_topic(), 'UTF-8'),
-            bytes(json.dumps({"state": {"reported": config}}), 'UTF-8'))
+            bytes(json.dumps({"state": {"reported": raw_config}}), 'UTF-8'))
 
     def check_connection(self):
         try:
@@ -66,6 +66,7 @@ class AwsClient:
 
             if not wifiConnect.getStatus()['active']:
                 self.connected = False
+                return
 
             if self.client.sock is not None:
                 try:
@@ -79,7 +80,7 @@ class AwsClient:
                 self.client.connect()
                 print('aws: subscribing')
                 self.client.subscribe(
-                    bytes(self.get_queue_program_topic(), 'UTF-8'))
+                    bytes(self.get_queue_zones_topic(), 'UTF-8'))
                 self.client.subscribe(
                     bytes(self.get_desired_config_received_topic(), 'UTF-8'))
                 print('aws: subscribed')
