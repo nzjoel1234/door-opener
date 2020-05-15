@@ -87,7 +87,6 @@ class UiManager:
         self.oled = oled
         self.current_control = None
         self.scheduler = WorkScheduler()
-        self.screen_saver_scheduler = WorkScheduler()
         self.goto(LoadingControl(self))
         self.lock = _thread.allocate_lock()
         self.events = [None] * 10
@@ -95,6 +94,8 @@ class UiManager:
         self.call_on_event = self.on_event
         self.zone_scheduler = None
         self.configurator = None
+        self.screen_saver_scheduler = WorkScheduler()
+        self.restart_screensaver_timeout()
 
     def goto(self, new_control):
         self.current_control = new_control
@@ -103,6 +104,9 @@ class UiManager:
     def schedule_render(self, millis=0):
         self.scheduler.schedule_work(millis)
 
+    def restart_screensaver_timeout(self):
+        self.screen_saver_scheduler.schedule_work(60 * 1000)
+
     def do_tasks(self):
         global EVENT_UP, EVENT_DOWN, EVENT_SELECT
         try:
@@ -110,8 +114,9 @@ class UiManager:
                 return
 
             with NoInterrupts() as lock:
+                if self.event_count > 0:
+                    self.restart_screensaver_timeout()
                 for i in range(self.event_count):
-                    self.screen_saver_scheduler.schedule_work(60 * 1000)
                     event = self.events[i]
                     if event == EVENT_UP:
                         self.current_control.on_up()
@@ -212,14 +217,14 @@ class ScreenSaverControl(UiControl):
     def render(self, oled):
         global SCREEN_H, SCREEN_W
         oled.fill(0)
-        new_drip = True
+        add_drip = True
         new_drips = []
         for drip in self.drips:
             x = drip[0]
             dy = drip[2]
             y = drip[1] + dy
             if y < 5:
-                new_drip = False
+                add_drip = False
             if y >= 1:
                 oled.vline(x - 1, max(0, y - 2), min(2, y), 1)
                 oled.vline(x + 1, max(0, y - 2), min(2, y), 1)
@@ -227,7 +232,7 @@ class ScreenSaverControl(UiControl):
             if y <= SCREEN_H:
                 new_drips.append((x, y, dy))
         oled.show()
-        if new_drip:
+        if add_drip:
             x = urandom.randrange(SCREEN_W)
             y = 0
             dy = urandom.randrange(1, 7)

@@ -1,13 +1,16 @@
 import sys
 import json
+import utime
 from umqtt.simple import MQTTClient
 import wifiConnect
 from workScheduler import WorkScheduler
+from zoneScheduler import ZoneScheduler
+from sprinklerConfiguration import SprinklerConfiguration
 
 
 class AwsClient:
 
-    def __init__(self, configurator, zone_scheduler):
+    def __init__(self, configurator: SprinklerConfiguration, zone_scheduler: ZoneScheduler):
         self.configurator = configurator
         self.zone_scheduler = zone_scheduler
         self.client_id = None
@@ -32,6 +35,12 @@ class AwsClient:
     def get_queue_zones_topic(self):
         return 'sprinkler/{}/queue_zones'.format(self.client_id)
 
+    def get_status_requested_topic(self):
+        return 'sprinkler/{}/status/request'.format(self.client_id)
+
+    def get_report_status_topic(self):
+        return 'sprinkler/{}/status/report'.format(self.client_id)
+
     def get_desired_config_received_topic(self):
         return 'sprinkler/{}/config/desired'.format(self.client_id)
 
@@ -41,23 +50,42 @@ class AwsClient:
     def sub_cb(self, topic, message):
         try:
             print('MQTT Message: {}'.format((topic, message)))
-            if topic == self.get_queue_zones_topic() and message.isdigit():
+            if topic == self.get_queue_zones_topic():
                 duration_by_zone = json.loads(message)
                 self.zone_scheduler.queue_zones(duration_by_zone)
+                self.report_status()
 
             if topic == self.get_desired_config_received_topic():
                 shadow = json.loads(message)
                 self.configurator.save_config(shadow)
                 self.report_config()
 
+            if topic == self.get_status_requested_topic():
+                self.report_status()
+
         except Exception as e:
             sys.print_exception(e)
 
+    def publish(self, topic, message):
+        self.client.publish(bytes(topic, 'UTF-8'),
+                            bytes(message, 'UTF-8'))
+
+    def subscribe(self, topic):
+        self.client.subscribe(bytes(topic, 'UTF-8'))
+
     def report_config(self):
         raw_config = self.configurator.read_config()
-        self.client.publish(
-            bytes(self.get_report_config_topic(), 'UTF-8'),
-            bytes(json.dumps({"state": {"reported": raw_config}}), 'UTF-8'))
+        self.publish(self.get_report_config_topic(),
+                     json.dumps({"state": {"reported": raw_config}}))
+
+    def report_status(self):
+        queue = self.zone_scheduler.queue
+        now = utime.time()
+        self.publish(self.get_report_status_topic(),
+                     json.dumps({
+                         'active': [(i[0], i[1]-now) for i in queue.active],
+                         'pending': queue.pending,
+                     }))
 
     def check_connection(self):
         try:
@@ -79,12 +107,12 @@ class AwsClient:
                 print('aws: connecting')
                 self.client.connect()
                 print('aws: subscribing')
-                self.client.subscribe(
-                    bytes(self.get_queue_zones_topic(), 'UTF-8'))
-                self.client.subscribe(
-                    bytes(self.get_desired_config_received_topic(), 'UTF-8'))
+                self.subscribe(self.get_queue_zones_topic())
+                self.subscribe(self.get_status_requested_topic())
+                self.subscribe(self.get_desired_config_received_topic())
                 print('aws: subscribed')
                 self.report_config()
+                self.report_status()
                 self.connected = True
 
         except Exception as e:
