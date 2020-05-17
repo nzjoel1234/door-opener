@@ -32,8 +32,11 @@ class AwsClient:
         except Exception as e:
             sys.print_exception(e)
 
+    def get_stop_zones_topic(self):
+        return 'sprinkler/{}/zones/stop'.format(self.client_id)
+
     def get_queue_zones_topic(self):
-        return 'sprinkler/{}/queue_zones'.format(self.client_id)
+        return 'sprinkler/{}/zones/queue'.format(self.client_id)
 
     def get_status_requested_topic(self):
         return 'sprinkler/{}/status/request'.format(self.client_id)
@@ -50,6 +53,11 @@ class AwsClient:
     def sub_cb(self, topic, message):
         try:
             print('MQTT Message: {}'.format((topic, message)))
+            if topic == self.get_stop_zones_topic():
+                zones = json.loads(message) if len(message) > 0 else []
+                self.zone_scheduler.stop_zones(zones)
+                self.report_status()
+                
             if topic == self.get_queue_zones_topic():
                 duration_by_zone = json.loads(message)
                 self.zone_scheduler.queue_zones(duration_by_zone)
@@ -107,6 +115,7 @@ class AwsClient:
                 print('aws: connecting')
                 self.client.connect()
                 print('aws: subscribing')
+                self.subscribe(self.get_stop_zones_topic())
                 self.subscribe(self.get_queue_zones_topic())
                 self.subscribe(self.get_status_requested_topic())
                 self.subscribe(self.get_desired_config_received_topic())

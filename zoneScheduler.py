@@ -10,14 +10,21 @@ from event import Event
 class ZoneQueue:
 
     def __init__(self, active=[], pending=[]):
-        self.active = active
-        self.pending = pending
+        self.active = list(active)
+        self.pending = list(pending)
 
     def is_empty(self):
         return len(self.active) + len(self.pending) == 0
 
     def concat(self, new_items):
         return ZoneQueue(self.active, self.pending + new_items)
+    
+    def without_zones(self, zones):
+        if zones is None or len(zones) == 0:
+            return ZoneQueue()
+        return ZoneQueue(
+            filter(lambda i: i[0] not in zones, self.active),
+            filter(lambda i: i[0] not in zones, self.pending))
 
     def serialise(self):
         import json
@@ -49,11 +56,6 @@ class ZoneScheduler:
 
     def is_active(self):
         return not self.queue.is_empty()
-
-    def stop_all(self):
-        with self.queue_lock:
-            self.queue = ZoneQueue()
-        self.workScheduler.schedule_work()
 
     def do_tasks(self):
         if not self.workScheduler.work_pending():
@@ -134,6 +136,11 @@ class ZoneScheduler:
                 sys.print_exception(ex)
                 self.shiftR.force_disable()
             self.workScheduler.schedule_work(2000)
+
+    def stop_zones(self, zones=[]):
+        with self.queue_lock:
+            self.queue = self.queue.without_zones(zones)
+        self.workScheduler.schedule_work()
 
     def queue_zones(self, duration_by_zone):
         with self.queue_lock:

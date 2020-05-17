@@ -411,7 +411,7 @@ class MenuControl(UiControl):
 
         if ui.zone_scheduler and ui.zone_scheduler.is_active():
             def stopAll(ui=ui, scheduler=ui.zone_scheduler):
-                scheduler.stop_all()
+                scheduler.stop_zones()
                 ui.goto(DashboardControl(ui))
             items.append(('Stop All', lambda: ui.goto(
                 MenuControl.get_confirm_menu(ui,

@@ -1,6 +1,5 @@
 class ShiftR:
 
-    # s = ShiftR(Pin(26, Pin.OUT), Pin(14, Pin.OUT), Pin(13, Pin.OUT), Pin(27, Pin.OUT), 8)
     def __init__(self, pin_output_enable, pin_clk, pin_ser, pin_latch, n_outputs):
         self.pin_output_enable = pin_output_enable
         self.pin_clk = pin_clk

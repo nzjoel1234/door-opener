@@ -49,7 +49,7 @@ def enable_server(configurator, zone_scheduler):
         httpResponse.WriteResponseOk()
 
     def handleStop(httpClient, httpResponse):
-        zone_scheduler.stop_all()
+        zone_scheduler.stop_zones()
         httpResponse.WriteResponseOk()
 
     routeHandlers = [
