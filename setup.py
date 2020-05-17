@@ -17,7 +17,7 @@ files = [
     './ssd1306.py',
     './workScheduler.py',
     './rotary.py',
-    './rtc_time.py',
+    './rtcTime.py',
     './zoneScheduler.py',
     './server.py',
     './shiftR.py',

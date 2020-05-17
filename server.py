@@ -19,13 +19,6 @@ def enable_server(configurator, zone_scheduler):
         wifiConnect.save_config(body['ssid'], body['password'])
         httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
 
-    def handlePostTime(httpClient, httpResponse):
-        import rtc_time
-        body = httpClient.ReadRequestContentAsJSON()
-        rtc_time.set_time(body['y'], body['mo'], body['d'],
-                          body['h'], body['mi'], body['s'])
-        httpResponse.WriteResponseOk()
-
     def handleGetPrograms(httpClient, httpResponse):
         httpResponse.WriteResponseJSONOk([
             {'id': p.id, 'name': p.name}
@@ -56,7 +49,6 @@ def enable_server(configurator, zone_scheduler):
         ('/status', 'GET', handleGetStatus),
         ('/networks', 'GET', handleGetNetworks),
         ('/network-config', 'POST', handlePostNetworkConfig),
-        ('/time', 'POST', handlePostTime),
         ('/programs', 'GET', handleGetPrograms),
         ('/zones', 'GET', handleGetZones),
         ('/start', 'POST', handleStart),

@@ -51,6 +51,7 @@ def setup_ap():
 aws_client = None
 zone_scheduler = None
 ui_manager = None
+rtc_time = None
 
 
 def setup():
@@ -59,7 +60,7 @@ def setup():
         i2c = machine.I2C(-1, machine.Pin(22), machine.Pin(21))
         oled = ssd1306.SSD1306_I2C(128, 64, i2c)
 
-        global ui_manager, zone_scheduler, aws_client
+        global ui_manager, zone_scheduler, aws_client, rtc_time
 
         import ui
         ui_manager = ui.UiManager(oled)
@@ -73,8 +74,10 @@ def setup():
         ui_manager.configurator = configurator
 
         loadingControl.set_status("rtc")
-        import rtc_time
+        from rtcTime import RtcTime
+        rtc_time = RtcTime()
         rtc_time.setup(i2c)
+        ui_manager.rtc_time = rtc_time
 
         loadingControl.set_status("shiftr")
         from shiftR import ShiftR
@@ -127,7 +130,6 @@ def setup():
 def ui_loop():
     while True:
         try:
-            global ui_manager
             if ui_manager:
                 ui_manager.do_tasks()
 
@@ -139,7 +141,8 @@ def ui_loop():
 def background_loop():
     while True:
         try:
-            global aws_client, zone_scheduler
+            if rtc_time:
+                rtc_time.do_tasks()
 
             if zone_scheduler:
                 zone_scheduler.do_tasks()

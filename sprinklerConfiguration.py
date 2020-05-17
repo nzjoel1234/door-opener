@@ -44,7 +44,7 @@ def parse_program(id, config):
     return Program(id, name, zones, schedules)
 
 
-Config = namedtuple('Config', ('zones', 'programs'))
+Config = namedtuple('Config', ('zones', 'programs', 'utcOffsetMins', 'totalZones'))
 
 
 def get_item_by_id(items, id):
@@ -100,7 +100,9 @@ class SprinklerConfiguration:
                 for i, x in enumerate(raw_programs)
             ], key=lambda p: p.id)
 
-            self.config = Config(zones, programs)
+            self.config = Config(zones, programs,
+                get_value(raw_config, 'utcOffsetMins', default=0),
+                get_value(raw_config, 'totalZones', default=8))
 
         except Exception as e:
             self.config = None
@@ -109,7 +111,14 @@ class SprinklerConfiguration:
             self.on_change_event.raise_event()
 
     def get_zone_num(self):
-        return 8
+        return self.config.totalZones if self.config else 8
+
+    def get_local_time(self, utc_secs=None):
+        if utc_secs is None:
+            utc_secs = time.time()
+        offset_mins = self.config.utcOffsetMins if self.config else 0
+        local_secs = utc_secs + 60 * offset_mins
+        return time.localtime(local_secs)
 
     def get_zones(self):
         return self.config.zones if self.config else []
@@ -126,10 +135,11 @@ class SprinklerConfiguration:
     def get_next_program_start(self, program, since_secs):
         if not program or not any(program.schedules):
             return None
-        y, mo, d, h, mi, s, wd, *z = time.localtime(since_secs)
-        day_start_secs = time.mktime((y, mo, d, 0, 0, 0, 0, 0))
+        secs_in_day = 24 * 60 * 60
         day = 0
         while day < 7:
+            y, mo, d, h, mi, s, wd, *z = self.get_local_time(since_secs + day * secs_in_day)
+            day_start_secs = since_secs + day * secs_in_day - (s + 60 * (mi + 60 * h))
             for s in sorted(program.schedules, key=lambda s: s.start_time):
                 start_time_h = round(s.start_time / 100)
                 start_time_m = s.start_time % 100
@@ -146,6 +156,4 @@ class SprinklerConfiguration:
                     continue
                 return start_secs
             day += 1
-            day_start_secs = day_start_secs + 24 * 60 * 60
-            y, mo, d, h, mi, s, wd, yd = time.localtime(day_start_secs)
         return None

@@ -24,13 +24,11 @@ def draw_small_down_arrow(oled, x, y, c):
 
 
 def draw_prev_arrow(oled, y):
-    global SCREEN_W
     for i in range(0, 5):
         oled.hline(int(SCREEN_W / 2) - 1 - i, y + i + 1, (i + 1) * 2, 1)
 
 
 def draw_next_arrow(oled):
-    global SCREEN_W, SCREEN_H
     for i in range(0, 5):
         oled.hline(int(SCREEN_W / 2) - 1 - i, SCREEN_H - 1 - i, (i + 1) * 2, 1)
 
@@ -43,7 +41,6 @@ def multi_line_text(oled, text, y):
 
 
 def centered_text(oled, text, y):
-    global SCREEN_W
     oled.text(text, int(SCREEN_W / 2) - (len(text) * 4), y)
 
 
@@ -94,6 +91,7 @@ class UiManager:
         self.call_on_event = self.on_event
         self.zone_scheduler = None
         self.configurator = None
+        self.rtc_time = None
         self.screen_saver_scheduler = WorkScheduler()
         self.restart_screensaver_timeout()
 
@@ -108,7 +106,6 @@ class UiManager:
         self.screen_saver_scheduler.schedule_work(60 * 1000)
 
     def do_tasks(self):
-        global EVENT_UP, EVENT_DOWN, EVENT_SELECT
         try:
             if not self.current_control:
                 return
@@ -188,7 +185,7 @@ class LoadingControl(UiControl):
         self.ui.schedule_render()
 
     def render(self, oled):
-        y, mo, d, h, mi, s, *rest = utime.localtime()
+        y, mo, d, h, mi, s, *rest = self.ui.configurator.get_local_time()
         oled.fill(0)
         centered_text(oled, 'Loading...', 0)
         centered_text(oled, self.status, 10)
@@ -215,7 +212,6 @@ class ScreenSaverControl(UiControl):
         self.on_interact()
 
     def render(self, oled):
-        global SCREEN_H, SCREEN_W
         oled.fill(0)
         add_drip = True
         new_drips = []
@@ -285,7 +281,6 @@ class DashboardControl(UiControl):
         rssi = DashboardControl.get_rssi()
         sig_strength = DashboardControl.rssi_to_sig_strength(rssi)
 
-        global SCREEN_W
         max_bar_height = 7
         bar_width = 4
         bar_space = 1
@@ -307,7 +302,7 @@ class DashboardControl(UiControl):
         text_right(oled, '--' if rssi is None else str(rssi),
                    first_bar_x - 2, 0)
 
-        y, mo, d, h, mi, s, wd, yd = utime.localtime()
+        y, mo, d, h, mi, s, wd, yd = self.ui.configurator.get_local_time()
 
         week_day = week_day_labels[wd]
         oled.text('{:02d}:{:02d}'.format(h, mi), 0, 0)
@@ -354,8 +349,6 @@ class MenuControl(UiControl):
         has_more_after = first_line + num_lines < len(self.items)
         if has_more_after:
             draw_next_arrow(oled)
-
-        global SCREEN_W
 
         for page_line in range(0, min(num_lines, len(self.items))):
             item_index = first_line + page_line
