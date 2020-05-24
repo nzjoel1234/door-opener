@@ -25,26 +25,6 @@
                     button.disabled = false;
                 });
         }
-        function setTime() {
-            const button = d.getElementById('set-time-btn');
-            button.disabled = true;
-            const errorSpan = d.getElementById('set-time-error');
-            errorSpan.innerHTML = '';
-            const now = new Date();
-            postJsonRequest('/time', {
-                'y': now.getFullYear(),
-                'mo': now.getMonth() + 1,
-                'd': now.getDate(),
-                'h': now.getHours(),
-                'mi': now.getMinutes(),
-                's': now.getSeconds(),
-            },
-                () => {
-                    errorSpan.innerHTML = 'Failed to set time';
-                    button.disabled = false;
-                },
-                r => button.disabled = false);
-        }
         function onNetworkSelectionChanged() {
             d.getElementById('network-ssid-input').value = d.getElementById('network-selector').value;
         }
@@ -96,9 +76,6 @@
         window.onload = () => {
             getStatus();
             getNetworks();
-            window.setInterval(
-                () => d.getElementById('time-value').innerHTML = new Date().toString(),
-                250);
         }
     </script>
 </head>
@@ -143,17 +120,6 @@
             <span class="error-span" id="set-config-error"></span>
             <div>
                 <button id="save-config-btn" onclick="setNetworkCofig()">Save</button>
-            </div>
-        </div>
-        <h2 class="sub-header">Set Time</h2>
-        <div class="detail">
-            <dl id="time">
-                <dt>Time</dt>
-                <dd><span id="time-value"></span></dd>
-            </dl>
-            <span class="error-span" id="set-time-error"></span>
-            <div>
-                <button id="set-time-btn" onclick="setTime()">Set Time</button>
             </div>
         </div>
     </div>

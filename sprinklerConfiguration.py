@@ -20,7 +20,7 @@ def parse_zone(id, config):
 
 Program = namedtuple('Program', ('id', 'name', 'zones', 'schedules'))
 ZoneDuration = namedtuple('ZoneDuration', ('id', 'duration'))
-Schedule = namedtuple('ProgramZone', (
+Schedule = namedtuple('ProgramSchedule', (
     'start_time',
     'odd_days',
     'even_days',

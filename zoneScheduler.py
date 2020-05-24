@@ -18,13 +18,6 @@ class ZoneQueue:
 
     def concat(self, new_items):
         return ZoneQueue(self.active, self.pending + new_items)
-    
-    def without_zones(self, zones):
-        if zones is None or len(zones) == 0:
-            return ZoneQueue()
-        return ZoneQueue(
-            filter(lambda i: i[0] not in zones, self.active),
-            filter(lambda i: i[0] not in zones, self.pending))
 
     def serialise(self):
         import json
@@ -139,7 +132,11 @@ class ZoneScheduler:
 
     def stop_zones(self, zones=[]):
         with self.queue_lock:
-            self.queue = self.queue.without_zones(zones)
+            self.queue = ZoneQueue() \
+                if zones is None or len(zones) == 0 else \
+                    ZoneQueue(
+                        filter(lambda i: i[0] not in zones, self.queue.active),
+                        filter(lambda i: i[0] not in zones, self.queue.pending))
         self.workScheduler.schedule_work()
 
     def queue_zones(self, duration_by_zone):

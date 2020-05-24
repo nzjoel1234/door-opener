@@ -92,7 +92,7 @@ def setup():
         from zoneScheduler import ZoneScheduler
         zone_scheduler = ZoneScheduler(configurator, shiftR)
         zone_scheduler.queue_changed_event.add_handler(
-            lambda q: print(q.serialise()))
+            lambda q: print('queue changed: {}'.format(q.serialise())))
         ui_manager.zone_scheduler = zone_scheduler
 
         loadingControl.set_status("server")
