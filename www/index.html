@@ -1,221 +1,85 @@
 <!DOCTYPE html>
 <html>
-
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" type="text/css" href="styles.css" />
     <script type="text/javascript" src="common.js"></script>
-    <title>E-SPrinkler</title>
+    <title>Door Opener</title>
     <script>
-        function stopAll() {
-            const button = d.getElementById('stop-all-btn');
-            button.disabled = true;
-            const errorSpan = d.getElementById('stop-all-error');
-            errorSpan.innerHTML = '';
-            postJsonRequest('/stop', null,
-                () => {
-                    errorSpan.innerHTML = 'Failed to stop all';
-                    button.disabled = false;
-                },
-                r => {
-                    button.disabled = false;
-                });
+      function updateDoorState(state, error) {
+        d.getElementById('door-state-error').innerHTML = error || '';
+        d.getElementById('door-state').innerHTML = status;
+      }
+      getDoorStateTimer = null;
+      function queueGetDoorState(millis) {
+        if (getDoorStateTimer) clearTimeout(getDoorStateTimer);
+        if (millis) getDoorStateTimer = setTimeout(getDoorState, millis);
+      }
+      function getDoorState() {
+        queueGetDoorState(0);
+        getRequest(
+          '/door-state',
+          () => {
+            updateDoorState(null, 'Failed to get status');
+            queueGetDoorState(2000);
+          },
+          (r) => {
+            updateDoorState(JSON.parse(r.responseText));
+            queueGetDoorState(5000);
+          },
+        );
+      }
+      function toggleDoor() {
+        if (!confirm('Are you sure?')) {
+          return;
         }
-        function startProgram() {
-            const selectEl = d.getElementById('program-selector');
-            if (selectEl.value == '') {
-                return
-            }
-            const button = d.getElementById('start-program-btn');
-            button.disabled = true;
-            const errorSpan = d.getElementById('run-program-error');
-            errorSpan.innerHTML = '';
-            postJsonRequest('/start', {
-                'type': 'program',
-                'id': +selectEl.value,
-            },
-                () => {
-                    errorSpan.innerHTML = 'Failed to start program';
-                    button.disabled = false;
-                },
-                r => {
-                    button.disabled = false;
-                });
-        }
-        function startCustomProgram() {
-            const button = d.getElementById('start-custom-program-btn');
-            button.disabled = true;
-            const errorSpan = d.getElementById('custom-program-error');
-            errorSpan.innerHTML = '';
-            const selectEl = d.getElementById('program-selector');
-            const rows = d.getElementsByClassName('custom-program-row');
-            postJsonRequest('/start', {
-                'type': 'custom',
-                'items': Array.from(d
-                    .getElementById('custom-program-tbody')
-                    .getElementsByClassName('zone-row')
-                )
-                    .map(row => {
-                        const duration = +row.querySelector('input[name="duration"]').value;
-                        const units = +row.querySelector('select[name="units"]').value;
-                        return {
-                            zone_id: +row.getAttribute('data-zone-id'),
-                            duration: duration * units,
-                        };
-                    }),
-            },
-                () => {
-                    errorSpan.innerHTML = 'Failed to start program';
-                    button.disabled = false;
-                },
-                r => {
-                    button.disabled = false;
-                });
-        }
-        function getPrograms() {
-            const button = d.getElementById('get-programs-btn');
-            button.disabled = true;
-            const errorSpan = d.getElementById('run-program-error');
-            errorSpan.innerHTML = '';
-            const selectEl = d.getElementById('program-selector');
-            selectEl.innerHTML = '';
-            addSelectOption(selectEl, 'Loading...');
-            getRequest('/programs',
-                () => {
-                    selectEl.innerHTML = '';
-                    errorSpan.innerHTML = 'Failed to get program list';
-                    button.disabled = false;
-                },
-                r => {
-                    const result = JSON.parse(r.responseText);
-                    selectEl.innerHTML = '';
-                    addSelectOption(selectEl, 'Select a program');
-                    result.forEach(program => {
-                        addSelectOption(selectEl, program.name, program.id);
-                    });
-                    button.disabled = false;
-                });
-        }
-        count = 0;
-        function getRowByZoneId(id) {
-            Array.from(d
-                .getElementById('custom-program-tbody')
-                .getElementsByClassName('zone-row'))
-                .find(row => id == +row.getAttribute('data-zone-id'));
-        }
-        function updateZoneList(zones) {
-            const tbodyEl = d.getElementById('custom-program-tbody');
-
-            // remove old zones
-            Array.from(tbodyEl.getElementsByClassName('zone-row'))
-                .filter(el => zones.find(z => z.id == el.getAttribute('data-zone-id')) == null)
-                .forEach(el => tbodyEl.removeChild(el));
-
-            zones.forEach(zone => {
-                const zoneId = zone.id;
-                const existingRowEl = Array.from(d
-                    .getElementById('custom-program-tbody')
-                    .getElementsByClassName('zone-row'))
-                    .find(row => +row.getAttribute('data-zone-id') == zoneId);
-                if (existingRowEl) {
-                    existingRowEl.getElementsByClassName('zone-name')[0].innerHTML = zone.name;
-                    return;
-                }
-                const rowEl = d.createElement('tr');
-                rowEl.className = 'zone-row';
-                rowEl.setAttribute('data-zone-id', zone.id)
-                const nameCellEl = d.createElement('td');
-                nameCellEl.className = 'zone-name';
-                nameCellEl.innerHTML = zone.name;
-                rowEl.appendChild(nameCellEl);
-                const durationInputEl = d.createElement('input');
-                durationInputEl.type = 'number';
-                durationInputEl.name = 'duration';
-                durationInputEl.value = 0;
-                const durationUnitsSelectorEl = d.createElement('select');
-                durationUnitsSelectorEl.className = 'units-selector';
-                durationUnitsSelectorEl.name = 'units';
-                addSelectOption(durationUnitsSelectorEl, 'Secs', 1);
-                addSelectOption(durationUnitsSelectorEl, 'Mins', 60);
-                addSelectOption(durationUnitsSelectorEl, 'Hours', 60 * 60);
-                const durationCellEl = d.createElement('td');
-                durationCellEl.appendChild(durationInputEl);
-                durationCellEl.appendChild(durationUnitsSelectorEl);
-                rowEl.appendChild(durationCellEl);
-                tbodyEl.appendChild(rowEl);
-                tbodyEl.inset
-            });
-        }
-        function getZones() {
-            const button = d.getElementById('get-zones-btn');
-            button.disabled = true;
-            const errorSpan = d.getElementById('custom-program-error');
-            errorSpan.innerHTML = '';
-            const loadingSpan = d.getElementById('custom-program-loading');
-            loadingSpan.innerHTML = 'loading...';
-
-            getRequest('/zones',
-                () => {
-                    loadingSpan.innerHTML = '';
-                    errorSpan.innerHTML = 'Failed to get zone list';
-                    button.disabled = false;
-                },
-                r => {
-                    loadingSpan.innerHTML = '';
-                    updateZoneList(JSON.parse(r.responseText));
-                    button.disabled = false;
-                });
-        }
-        window.onload = () => {
-            getZones();
-            getPrograms();
-        }
+        const button = d.getElementById('toggle-door-btn');
+        button.disabled = true;
+        const errorSpan = d.getElementById('toggle-door-error');
+        errorSpan.innerHTML = '';
+        postJsonRequest(
+          '/toggle-door',
+          null,
+          () => {
+            errorSpan.innerHTML = 'Failed to toggle door';
+            button.disabled = false;
+          },
+          (r) => {
+            button.disabled = false;
+          },
+        );
+      }
+      window.onload = () => {
+        getDoorState();
+      };
     </script>
-</head>
+  </head>
 
-<body>
+  <body>
     <div class="header">
-        <h1>E-SPrinkler</h1>
+      <h1>Door Opener</h1>
     </div>
     <div class="nav">
-        <span>Index</span>
-        <a href="config.html">Config</a>
+      <span>Index</span>
+      <a href="config.html">Config</a>
     </div>
-    <div style="margin-left: 10px;">
-        <h2 class="sub-header">Stop All</h2>
-        <div class="detail">
-            <div>
-                <button id="stop-all-btn" onclick="stopAll()">Stop All</button>
-            </div>
-            <span class="error-span" id="stop-all-error"></span>
-        </div>
-
-        <h2 class="sub-header">Run Program <button id="get-programs-btn" onclick="getPrograms()">Refresh</button>
-        </h2>
-        <div class="detail">
-            <div>
-                <label>Programs:<label>
-                        <select id="program-selector"></select>
-                        <button id="start-program-btn" onclick="startProgram()">Start</button>
-            </div>
-            <span class="error-span" id="run-program-error"></span>
-        </div>
-
-        <h2 class="sub-header">Custom Program <button id="get-zones-btn" onclick="getZones()">Refresh</button></h2>
-        <div class="detail">
-            <span class="loading-span" id="custom-program-loading"></span>
-            <span class="error-span" id="custom-program-error"></span>
-            <table>
-                <thead>
-                    <th style="min-width: 150px; text-align: left;">Zone</th>
-                    <th style="min-width: 150px; text-align: left;">Duration</th>
-                    <th><button id="start-custom-program-btn" onclick="startCustomProgram()">Start</button></th>
-                </thead>
-                <tbody id="custom-program-tbody">
-                </tbody>
-            </table>
-        </div>
+    <div style="margin-left: 10px">
+      <h2 class="sub-header">Door State</h2>
+      <div class="detail">
+        <span id="door-state">Loading...</span>
+        <span class="error-span" id="door-state-error"></span>
+      </div>
     </div>
-</body>
-
+    <div style="margin-left: 10px">
+      <h2 class="sub-header">Toggle Door</h2>
+      <div class="detail">
+        <div>
+          <button id="toggle-door-btn" onclick="toggleDoor()">
+            Toggle Door
+          </button>
+        </div>
+        <span class="error-span" id="toggle-door-error"></span>
+      </div>
+    </div>
+  </body>
 </html>

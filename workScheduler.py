@@ -18,6 +18,6 @@ class WorkScheduler:
             utime.ticks_ms(), self.next_run) >= 0
         if work_pending:
             self.run_scheduled = False
-            if millis is not None:
-                self.schedule_work(millis)
+        if not self.run_scheduled and millis is not None:
+            self.schedule_work(millis)
         return work_pending

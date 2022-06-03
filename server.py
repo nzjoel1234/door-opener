@@ -1,58 +1,61 @@
+from doorController import DoorController
+from doorSensor import DoorSensor
 
 mws = None
 init_error = ''
 
 
-def enable_server(configurator, zone_scheduler):
+def enable_server(
+        doorController: DoorController,
+        doorSensor: DoorSensor):
 
     def handleGetStatus(httpClient, httpResponse):
-        import wifiConnect
-        httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
+        try:
+            import wifiConnect
+            httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
+        except Exception as e:
+            sys.print_exception(e)
+            raise
 
     def handleGetNetworks(httpClient, httpResponse):
-        import wifiConnect
-        httpResponse.WriteResponseJSONOk(wifiConnect.scan_networks())
+        try:
+            import wifiConnect
+            httpResponse.WriteResponseJSONOk(wifiConnect.scan_networks())
+        except Exception as e:
+            sys.print_exception(e)
+            raise
 
     def handlePostNetworkConfig(httpClient, httpResponse):
-        import wifiConnect
-        body = httpClient.ReadRequestContentAsJSON()
-        wifiConnect.save_config(body['ssid'], body['password'])
-        httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
+        try:
+            import wifiConnect
+            body = httpClient.ReadRequestContentAsJSON()
+            wifiConnect.save_config(body['ssid'], body['password'])
+            httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
+        except Exception as e:
+            sys.print_exception(e)
+            raise
 
-    def handleGetPrograms(httpClient, httpResponse):
-        httpResponse.WriteResponseJSONOk([
-            {'id': p.id, 'name': p.name}
-            for p in configurator.get_programs()
-        ])
+    def handleToggleDoor(httpClient, httpResponse):
+        try:
+            doorController.toggle_door()
+            httpResponse.WriteResponseOk()
+        except Exception as e:
+            sys.print_exception(e)
+            raise
 
-    def handleGetZones(httpClient, httpResponse):
-        httpResponse.WriteResponseJSONOk([
-            {'id': z.id, 'name': z.name}
-            for z in configurator.get_zones()
-        ])
-
-    def handleStart(httpClient, httpResponse):
-        body = httpClient.ReadRequestContentAsJSON()
-        if body['type'] == 'program':
-            zone_scheduler.queue_program(int(body['id']))
-        else:
-            zone_scheduler.queue_zones({
-                i['zone_id']: i['duration'] for i in body['items']
-            })
-        httpResponse.WriteResponseOk()
-
-    def handleStop(httpClient, httpResponse):
-        zone_scheduler.stop_zones()
-        httpResponse.WriteResponseOk()
+    def handleGetDoorState(httpClient, httpResponse):
+        try:
+            httpResponse.WriteResponseJSONOk(doorSensor.state)
+        except Exception as e:
+            sys.print_exception(e)
+            raise
 
     routeHandlers = [
         ('/status', 'GET', handleGetStatus),
         ('/networks', 'GET', handleGetNetworks),
         ('/network-config', 'POST', handlePostNetworkConfig),
-        ('/programs', 'GET', handleGetPrograms),
-        ('/zones', 'GET', handleGetZones),
-        ('/start', 'POST', handleStart),
-        ('/stop', 'POST', handleStop),
+        ('/toggle-door', 'POST', handleToggleDoor),
+        ('/door-state', 'GET', handleGetDoorState),
     ]
 
     global mws, init_error
@@ -62,7 +65,6 @@ def enable_server(configurator, zone_scheduler):
             routeHandlers=routeHandlers,
             webPath='www')
         mws.Start(threaded=True)
-        is_enabled = True
     except Exception as e:
         import sys
         sys.print_exception(e)

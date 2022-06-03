@@ -1,23 +1,27 @@
 import sys
 import json
-import utime
+from doorSensor import DoorSensor, DoorStates
 from umqtt.simple import MQTTClient
 import wifiConnect
 from workScheduler import WorkScheduler
-from zoneScheduler import ZoneScheduler
-from sprinklerConfiguration import SprinklerConfiguration
+from doorController import DoorController
+import machine
 
 
 class AwsClient:
 
-    def __init__(self, configurator: SprinklerConfiguration, zone_scheduler: ZoneScheduler):
-        self.configurator = configurator
-        self.zone_scheduler = zone_scheduler
+    def __init__(self, door_controller: DoorController, door_sensor: DoorSensor):
+        self.door_controller = door_controller
+        self.door_sensor = door_sensor
+        self.door_sensor.state_changed_event.add_handler(self.publish_state)
         self.client_id = None
         self.client = None
         self.connected = False
-        self.reconnect_scheduler = WorkScheduler()
-        self.reconnect_scheduler.schedule_work()
+        self.reconnect_scheduler = WorkScheduler(True)
+
+    def __del__(self):
+        self.door_sensor.state_changed_event.remove_handler(
+            self.publish_state)
 
     def setup(self):
         try:
@@ -32,44 +36,34 @@ class AwsClient:
         except Exception as e:
             sys.print_exception(e)
 
-    def get_stop_zones_topic(self):
-        return 'sprinkler/{}/zones/stop'.format(self.client_id)
+    def get_toggle_request_topic(self):
+        return 'door-opener/{}/toggle/request'.format(self.client_id)
 
-    def get_queue_zones_topic(self):
-        return 'sprinkler/{}/zones/queue'.format(self.client_id)
+    def get_toggle_response_topic(self):
+        return 'door-opener/{}/toggle/response'.format(self.client_id)
 
-    def get_status_requested_topic(self):
-        return 'sprinkler/{}/status/request'.format(self.client_id)
+    def get_state_request_topic(self):
+        return 'door-opener/{}/state/request'.format(self.client_id)
 
-    def get_report_status_topic(self):
-        return 'sprinkler/{}/status/report'.format(self.client_id)
+    def get_state_update_topic(self):
+        return 'door-opener/{}/state/update'.format(self.client_id)
 
-    def get_desired_config_received_topic(self):
-        return 'sprinkler/{}/config/desired'.format(self.client_id)
-
-    def get_report_config_topic(self):
-        return '$aws/things/{}/shadow/update'.format(self.client_id)
+    def get_reset_topic(self):
+        return 'door-opener/{}/reset'.format(self.client_id)
 
     def sub_cb(self, topic, message):
         try:
             print('MQTT Message: {}'.format((topic, message)))
-            if topic == self.get_stop_zones_topic():
-                zones = json.loads(message) if len(message) > 0 else []
-                self.zone_scheduler.stop_zones(zones)
-                self.report_status()
-                
-            if topic == self.get_queue_zones_topic():
-                duration_by_zone = json.loads(message)
-                self.zone_scheduler.queue_zones(duration_by_zone)
-                self.report_status()
 
-            if topic == self.get_desired_config_received_topic():
-                shadow = json.loads(message)
-                self.configurator.save_config(shadow)
-                self.report_config()
+            if topic == self.get_toggle_request_topic():
+                self.door_controller.toggle_door()
+                self.publish(self.get_toggle_response_topic(), '')
 
-            if topic == self.get_status_requested_topic():
-                self.report_status()
+            if topic == self.get_state_request_topic():
+                self.publish_state()
+
+            if topic == self.get_reset_topic():
+                machine.reset()
 
         except Exception as e:
             sys.print_exception(e)
@@ -81,19 +75,9 @@ class AwsClient:
     def subscribe(self, topic):
         self.client.subscribe(bytes(topic, 'UTF-8'))
 
-    def report_config(self):
-        raw_config = self.configurator.read_config()
-        self.publish(self.get_report_config_topic(),
-                     json.dumps({"state": {"reported": raw_config}}))
-
-    def report_status(self):
-        queue = self.zone_scheduler.queue
-        now = utime.time()
-        self.publish(self.get_report_status_topic(),
-                     json.dumps({
-                         'active': [(i[0], i[1]-now) for i in queue.active],
-                         'pending': queue.pending,
-                     }))
+    def publish_state(self, state: DoorStates = None):
+        state = state or self.door_sensor.state
+        self.publish(self.get_state_update_topic(), str(state))
 
     def check_connection(self):
         try:
@@ -115,13 +99,13 @@ class AwsClient:
                 print('aws: connecting')
                 self.client.connect()
                 print('aws: subscribing')
-                self.subscribe(self.get_stop_zones_topic())
-                self.subscribe(self.get_queue_zones_topic())
-                self.subscribe(self.get_status_requested_topic())
-                self.subscribe(self.get_desired_config_received_topic())
+                self.subscribe(self.get_toggle_request_topic())
+                self.subscribe(self.get_state_request_topic())
+                self.subscribe(self.get_reset_topic())
                 print('aws: subscribed')
-                self.report_config()
-                self.report_status()
+                print('aws: publishing initial state')
+                self.publish_state()
+                print('aws: published initial state')
                 self.connected = True
 
         except Exception as e:
