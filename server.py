@@ -6,8 +6,8 @@ init_error = ''
 
 
 def enable_server(
-        doorController: DoorController,
-        doorSensor: DoorSensor):
+        door_controller: DoorController,
+        door_sensor: DoorSensor):
 
     def handleGetStatus(httpClient, httpResponse):
         try:
@@ -37,7 +37,7 @@ def enable_server(
 
     def handleToggleDoor(httpClient, httpResponse):
         try:
-            doorController.toggle_door()
+            door_controller.toggle_door()
             httpResponse.WriteResponseOk()
         except Exception as e:
             sys.print_exception(e)
@@ -45,7 +45,7 @@ def enable_server(
 
     def handleGetDoorState(httpClient, httpResponse):
         try:
-            httpResponse.WriteResponseJSONOk(doorSensor.state)
+            httpResponse.WriteResponseJSONOk(door_sensor.state)
         except Exception as e:
             sys.print_exception(e)
             raise

@@ -8,7 +8,7 @@
     <script>
       function updateDoorState(state, error) {
         d.getElementById('door-state-error').innerHTML = error || '';
-        d.getElementById('door-state').innerHTML = status;
+        d.getElementById('door-state').innerHTML = state;
       }
       getDoorStateTimer = null;
       function queueGetDoorState(millis) {
@@ -24,6 +24,7 @@
             queueGetDoorState(2000);
           },
           (r) => {
+            console.log(r);
             updateDoorState(JSON.parse(r.responseText));
             queueGetDoorState(5000);
           },

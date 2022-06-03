@@ -70,7 +70,7 @@ def setup():
 
         print('Setup Server')
         import server
-        server.enable_server(door_controller)
+        server.enable_server(door_controller, door_sensor)
 
         print('AP')
         setup_ap()
