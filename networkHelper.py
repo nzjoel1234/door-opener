@@ -27,6 +27,11 @@ def scan_networks():
     return list(map(lambda n: {'ssid': n[0], 'rssi': n[3]}, sta.scan()))
 
 
+def isWiFiActive():
+    sta = network.WLAN(network.STA_IF)
+    return sta.isconnected()
+
+
 def getStatus():
     sta = network.WLAN(network.STA_IF)
     sta.active(True)

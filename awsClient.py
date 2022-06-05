@@ -5,14 +5,16 @@ from umqtt.simple import MQTTClient
 import networkHelper
 from workScheduler import WorkScheduler
 from doorController import DoorController
+from networkTime import NetworkTime
 import machine
 
 
 class AwsClient:
 
-    def __init__(self, door_controller: DoorController, door_sensor: DoorSensor):
+    def __init__(self, door_controller: DoorController, door_sensor: DoorSensor, network_time: NetworkTime):
         self.door_controller = door_controller
         self.door_sensor = door_sensor
+        self.network_time = network_time
         self.door_sensor.state_changed_event.add_handler(self.publish_state)
         self.client_id = None
         self.client = None
@@ -84,7 +86,7 @@ class AwsClient:
             if not self.client:
                 return
 
-            if not networkHelper.getStatus()['active']:
+            if (not self.network_time.ntp_loaded) or (not networkHelper.isWiFiActive()):
                 self.connected = False
                 return
 

@@ -1,5 +1,4 @@
 import sys
-import network
 import webrepl
 import machine
 import micropython
@@ -43,11 +42,11 @@ def setup():
 
         global aws_client, network_time, door_controller, door_sensor
 
-        print('Setup DoorController')
+        print('BOOT: DoorController')
         from doorController import DoorController
         door_controller = DoorController(door_relay_pin)
 
-        print('Setup DoorSensor')
+        print('BOOT: DoorSensor')
         from doorSensor import DoorSensor
         door_sensor_temp = DoorSensor(
             hall_sensor_pin=door_hall_sense_pin,
@@ -56,26 +55,24 @@ def setup():
         door_sensor_temp.setup()
         door_sensor = door_sensor_temp
 
-        print('Setup Server')
+        print('BOOT: Server')
         import server
         server.enable_server(door_controller, door_sensor)
 
-        print('AP')
+        print('BOOT: AP')
         import networkHelper
         networkHelper.setup_ap()
 
-        print('WiFi')
+        print('BOOT: WiFi')
         networkHelper.try_connect()
 
-        print('Setup NetworkTime')
+        print('BOOT: NetworkTime')
         from networkTime import NetworkTime
-        network_time_temp = NetworkTime()
-        network_time_temp.do_tasks()
-        network_time = network_time_temp
+        network_time = NetworkTime()
 
-        print("aws")
+        print("BOOT: AWS")
         from awsClient import AwsClient
-        temp_aws_client = AwsClient(door_controller, door_sensor)
+        temp_aws_client = AwsClient(door_controller, door_sensor, network_time)
         temp_aws_client.setup()
         aws_client = temp_aws_client
 

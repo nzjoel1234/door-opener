@@ -1,5 +1,6 @@
 import sys
 from workScheduler import WorkScheduler
+import networkHelper
 
 
 class NetworkTime:
@@ -9,9 +10,12 @@ class NetworkTime:
         self.workScheduler = WorkScheduler(True)
 
     def do_tasks(self):
-        if self.ntp_loaded or not self.workScheduler.work_pending(5000):
+        if self.ntp_loaded or not self.workScheduler.work_pending(1000):
             return
         try:
+            import networkHelper
+            if not networkHelper.isWiFiActive():
+                return
             import ntptime
             ntptime.settime()
             self.ntp_loaded = True
