@@ -1,5 +1,6 @@
 from doorController import DoorController
 from doorSensor import DoorSensor
+import networkHelper
 
 mws = None
 init_error = ''
@@ -11,26 +12,23 @@ def enable_server(
 
     def handleGetStatus(httpClient, httpResponse):
         try:
-            import wifiConnect
-            httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
+            httpResponse.WriteResponseJSONOk(networkHelper.getStatus())
         except Exception as e:
             sys.print_exception(e)
             raise
 
     def handleGetNetworks(httpClient, httpResponse):
         try:
-            import wifiConnect
-            httpResponse.WriteResponseJSONOk(wifiConnect.scan_networks())
+            httpResponse.WriteResponseJSONOk(networkHelper.scan_networks())
         except Exception as e:
             sys.print_exception(e)
             raise
 
     def handlePostNetworkConfig(httpClient, httpResponse):
         try:
-            import wifiConnect
             body = httpClient.ReadRequestContentAsJSON()
-            wifiConnect.save_config(body['ssid'], body['password'])
-            httpResponse.WriteResponseJSONOk(wifiConnect.getStatus())
+            networkHelper.save_config(body['ssid'], body['password'])
+            httpResponse.WriteResponseJSONOk(networkHelper.getStatus())
         except Exception as e:
             sys.print_exception(e)
             raise

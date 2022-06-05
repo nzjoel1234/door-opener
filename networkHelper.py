@@ -3,15 +3,19 @@ import network
 import json
 
 
+ap_config_path = 'ap.json'
+wifi_config_path = 'wifi.json'
+
+
 def save_config(ssid, password):
-    with open('network.json', 'w+') as f:
+    with open(wifi_config_path, 'w+') as f:
         f.write(json.dumps({'ssid': ssid, 'password': password}))
     try_connect(forceReconnect=True)
 
 
-def get_config():
+def read_json(path):
     try:
-        with open('network.json', 'r') as f:
+        with open(path, 'r') as f:
             return json.loads(f.read())
     except:
         return None
@@ -27,7 +31,7 @@ def getStatus():
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
     if not sta.isconnected():
-        config = get_config()
+        config = read_json(wifi_config_path)
         return {
             'active': False,
             'ssid': config['ssid'] if config is not None else 'n/a',
@@ -43,11 +47,24 @@ def getStatus():
 def try_connect(forceReconnect=False):
     sta_if = network.WLAN(network.STA_IF)
     sta_if.active(True)
-    config = get_config()
+    config = read_json(wifi_config_path)
     if (config is None) or ('ssid' not in config) or (config['ssid'] is None):
+        print('Failed to read wifi config')
         return
     if forceReconnect:
         sta_if.disconnect()
     if sta_if.config('essid') == config['ssid'] and sta_if.isconnected():
         return
     sta_if.connect(config['ssid'], config['password'])
+
+
+def setup_ap():
+    config = read_json(ap_config_path)
+    if (config is None) or ('ssid' not in config) or (config['ssid'] is None):
+        print('Failed to read ap config')
+        return
+    ap = network.WLAN(network.AP_IF)
+    ap.active(True)
+    ap.config(essid=config['ssid'],
+              authmode=network.AUTH_WPA_WPA2_PSK,
+              password=config['password'])

@@ -11,17 +11,18 @@ fw = 'esp32-idf3-20191220-v1.12.bin'
 files = [
     './www',
     './aws',
-    './network.json',
+    './ap.json',
+    './wifi.json',
     './mqtt.json',
     './awsClient.py',
     './doorController.py',
     './doorSensor.py',
     './event.py',
     './microWebSrv.py',
+    './networkHelper.py',
     './networkTime.py',
     './workScheduler.py',
     './server.py',
-    './wifiConnect.py',
     # put boot last - don't want board to try boot with files missing
     'boot.py'
 ]

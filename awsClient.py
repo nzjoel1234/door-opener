@@ -2,7 +2,7 @@ import sys
 import json
 from doorSensor import DoorSensor, DoorStates
 from umqtt.simple import MQTTClient
-import wifiConnect
+import networkHelper
 from workScheduler import WorkScheduler
 from doorController import DoorController
 import machine
@@ -84,7 +84,7 @@ class AwsClient:
             if not self.client:
                 return
 
-            if not wifiConnect.getStatus()['active']:
+            if not networkHelper.getStatus()['active']:
                 self.connected = False
                 return
 

@@ -31,14 +31,6 @@ if safeModeDetectPin.value() == 0:
 webrepl.start(password='admin')
 
 
-def setup_ap():
-    ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    ap.config(essid='door-opener',
-              authmode=network.AUTH_WPA_WPA2_PSK,
-              password="dooropenermcbreen123")
-
-
 aws_client = None
 network_time = None
 door_controller = None
@@ -50,10 +42,6 @@ def setup():
     try:
 
         global aws_client, network_time, door_controller, door_sensor
-
-        print('Setup NetworkTime')
-        from networkTime import NetworkTime
-        network_time = NetworkTime()
 
         print('Setup DoorController')
         from doorController import DoorController
@@ -73,11 +61,17 @@ def setup():
         server.enable_server(door_controller, door_sensor)
 
         print('AP')
-        setup_ap()
+        import networkHelper
+        networkHelper.setup_ap()
 
         print('WiFi')
-        import wifiConnect
-        wifiConnect.try_connect()
+        networkHelper.try_connect()
+
+        print('Setup NetworkTime')
+        from networkTime import NetworkTime
+        network_time_temp = NetworkTime()
+        network_time_temp.do_tasks()
+        network_time = network_time_temp
 
         print("aws")
         from awsClient import AwsClient
